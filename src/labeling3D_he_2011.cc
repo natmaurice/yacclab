@@ -6,4 +6,13 @@
 
 #include "labeling3D_he_2011.h"
 
+
+template <typename LabelsSolver>
+using LEB_3D_CCA = LEB_3D<LabelsSolver, true, ConfFeatures3DAll>;
+
+template <typename LabelsSolver>
+using LEB_3D_CCA_only = LEB_3D<LabelsSolver, false, ConfFeatures3DAll>;
+
 REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(LEB_3D);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(LEB_3D_CCA);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(LEB_3D_CCA_only);

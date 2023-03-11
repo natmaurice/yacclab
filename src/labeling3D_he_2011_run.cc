@@ -6,4 +6,12 @@
 
 #include "labeling3D_he_2011_run.h"
 
+template <typename LabelsSolver>
+using RBTS_3D_CCA = RBTS_3D<LabelsSolver, true, ConfFeatures3DAll>;
+
+template <typename LabelsSolver>
+using RBTS_3D_CCA_only = RBTS_3D<LabelsSolver, false, ConfFeatures3DAll>;
+
 REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(RBTS_3D);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(RBTS_3D_CCA);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(RBTS_3D_CCA_only);

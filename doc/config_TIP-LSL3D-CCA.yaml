@@ -1,0 +1,73 @@
+%YAML:1.2
+CPU 3D 26-way connectivity:
+  
+  execute: true
+  
+  # Tests to perform and their number of repetitions
+  # ------------------------------------------------
+  
+  perform: 
+    correctness:        true
+    average:            false
+    average_with_steps: true
+    density:            false
+    granularity:        true
+    memory:             false
+
+  correctness_tests:
+    eight_connectivity_standard: false
+    eight_connectivity_steps:    true
+    eight_connectivity_memory:   false
+
+  tests_number:
+    average:            10
+    average_with_steps: 10
+    density:            10
+    granularity:        5
+
+  # List of 3D CPU CCL algorithms to test
+  # -------------------------------------
+  
+  algorithms: 
+    - LEB_3D_CCA_UF
+    - RBTS_3D_CCA_only_UF
+    - SAUFpp_3D_CCA_UF
+    - PREDpp_3D_CCA_UF
+    - EPDT_3D_22c_CCA_UF
+
+    - LSL3D_ER_CCA_only_UF
+    - LSL3D_FSM_CCA_only_UF
+    - LSL3D_FSM_DOUBLE_PL_CCA_only_UF
+
+    - LSL3D_ER_SSE4_CCA_only_UF
+    - LSL3D_FSM_SSE4_CCA_only_UF
+    - LSL3D_FSM_DOUBLE_PL_SSE4_CCA_only_UF
+
+  # Datasets to use for each test
+  # -----------------------------
+  
+  # Note that perform correctness tests on labeling_NULL algorithm does not make sense
+  check_datasets: ["check3D", "mitochondria", "oasis"]
+  
+  # List of datasets on which "Average Runtime Tests" shall be run
+  average_datasets: ["mitochondria", "oasis"]
+  
+  # List of datasets on which "Average Runtime Tests With Steps" shall be run
+  average_datasets_with_steps: ["mitochondria", "oasis"]
+
+  parallel_average_datasets_with_steps: ["mitochondria", "oasis"]
+
+  # List of datasets on which "Memory Tests" shall be run
+  memory_datasets: ["mitochondria", "oasis"]
+
+  # Save the results of each run test
+  save_middle_tests: {average: false, average_with_steps: true, density: false, granularity: false, parallel_average_with_steps: true}
+
+  
+paths: {input: "input", output: "output"}
+
+write_n_labels: false
+
+color_labels: {average: false, density: false}
+
+os: "Linux 6.0.2"

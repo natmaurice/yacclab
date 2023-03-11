@@ -360,6 +360,26 @@ void HideConsoleCursor()
     return;
 }
 
+
+void ShowConsoleCursor()
+{
+#ifdef YACCLAB_WINDOWS
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    CONSOLE_CURSOR_INFO cursor_info;
+
+    GetConsoleCursorInfo(out, &cursor_info);
+    cursor_info.bVisible = true; // set the cursor visibility
+    SetConsoleCursorInfo(out, &cursor_info);
+
+#elif defined(YACCLAB_LINUX) || defined(YACCLAB_UNIX) || defined(YACCLAB_APPLE)
+    int unused; // To avoid "return unused" and "variable unused" warnings 
+    unused = system("setterm -cursor on");
+#endif
+    return;
+}
+
+
 int RedirectCvError(int status, const char* func_name, const char* err_msg, const char* file_name, int line, void*)
 {
     OutputBox ob;

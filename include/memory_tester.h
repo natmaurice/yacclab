@@ -96,20 +96,26 @@ private:
 template <typename T>
 class MemVector {
 public:
-	MemVector() {}
+    MemVector() {}
 
     MemVector(std::vector<T> vec)
     {
         vec_ = vec;  // Deep copy
         accesses_ = std::vector<int>(vec.size(), 0);
     }
-
+    
     MemVector(const size_t size)
     {
         vec_ = std::vector<T>(size);
         accesses_ = std::vector<int>(size, 0);
     }
 
+    
+    MemVector(MemVector&& other) {
+	std::swap(other.vec_, vec_);
+	std::swap(other.accesses_, accesses_);
+    }
+    
     MemVector(const size_t size, const T val)
     {
         vec_ = std::vector<T>(size, val);
@@ -122,6 +128,12 @@ public:
         return vec_[i];
     }
 
+    MemVector& operator=(MemVector&& other) {
+	std::swap(other.vec_, vec_);
+	std::swap(other.accesses_, accesses_);
+	return *this;
+    }
+    
     std::vector<T> GetVector() const
     {
         return vec_;

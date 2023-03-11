@@ -10,7 +10,6 @@
 #include <opencv2/imgproc.hpp>
 #include <string>
 #include <map>
-#include <array>
 
 #include "file_manager.h"
 #include "system_info.h"
@@ -22,54 +21,53 @@ struct ModeConfig {
 
 	std::string mode;
 
-	bool perform_blocksize;				 // Whether to perform block size grid search or not
 	bool perform_correctness;            // Whether to perform correctness tests or not
 	bool perform_average;                // Whether to perform average tests or not
 	bool perform_density;                // Whether to perform density tests or not
 	bool perform_granularity;            // Whether to perform granularity tests or not
 	bool perform_memory;                 // Whether to perform memory tests or not
 	bool perform_average_ws;             // Whether to perform average tests with steps or not
-
+        bool perform_parallel_average_ws; // Whether to perform parallel average tests with steps or not 
+        bool perform_parallel_granularity;
+    
 	bool perform_check_8connectivity_std;	// Whether to perform 8-connectivity test on PerformLabeling() functions
 	bool perform_check_8connectivity_ws;	// Whether to perform 8-connectivity test on PerformLabelingWithSteps() functions
 	bool perform_check_8connectivity_mem;	// Whether to perform 8-connectivity test on PerformLabelingMem() functions
-	bool perform_check_8connectivity_bs;	// Whether to perform 8-connectivity test on PerformLabelingBlocksize() functions
 
 	bool average_save_middle_tests;      // If true, results of each average test run will be stored 
 	bool density_save_middle_tests;      // If true, results of each density test run will be stored 
 	bool granularity_save_middle_tests;  // If true, results of each granularity test run will be stored 
 	bool average_ws_save_middle_tests;   // If true, results of each average test with steps run will be stored 
-
+        bool parallel_average_ws_save_middle_tests; // If true, results of each parallel average with steps run will be stored
+        bool parallel_granularity_save_middle_tests;
+    
 	unsigned average_tests_number;        // Reps of average tests (only the minimum will be considered)
 	unsigned average_ws_tests_number;     // Reps of average tests with steps (only the minimum will be considered)
 	unsigned density_tests_number;        // Reps of density tests (only the minimum will be considered)
 	unsigned granularity_tests_number;    // Reps of density tests (only the minimum will be considered)
-	unsigned blocksize_tests_number;      // Reps of blocksize tests (only the minimum will be considered)
-
+        unsigned parallel_average_ws_tests_number; // Reps of parallel average wtih steps (only the minimum will be considered)
+        unsigned parallel_granularity_tests_number;
+    
+    
 	std::vector<cv::String> check_datasets;       // List of datasets on which check tests will be performed
 	std::vector<cv::String> memory_datasets;      // List of datasets on which memory tests will be perform
 	std::vector<cv::String> density_datasets;     // List of datasets on which density tests will be performed
 	std::vector<cv::String> granularity_datasets; // List of datasets on which granularity tests will be performed
 	std::vector<cv::String> average_datasets;     // Lists of dataset on which average tests will be performed
-	std::vector<cv::String> average_ws_datasets;  // Lists of dataset on which average tests with steps will be performed
-	std::vector<cv::String> blocksize_datasets;	  // Lists of dataset on which blocksize tests will be performed
+	std::vector<cv::String> average_ws_datasets;  // Lists of dataset on which average tests whit steps will be performed
+        std::vector<cv::String> parallel_average_ws_datasets; // List of dataset on which parallel average with steps will be performed
+        std::vector<cv::String> parallel_granularity_datasets;
 
+    
 	std::vector<cv::String> ccl_algorithms;          // Lists of algorithms specified by the user in the config.yaml
 	std::vector<std::string> ccl_existing_algorithms; // Lists of 'ccl_algorithms' actually existing
 
 	std::vector<std::string> ccl_mem_algorithms;        // List of algorithms which actually support memory tests
 	std::vector<std::string> ccl_average_algorithms;    // List of algorithms which actually support average tests
 	std::vector<std::string> ccl_average_ws_algorithms; // List of algorithms which actually support average with steps tests
-	std::vector<std::string> ccl_blocksize_algorithms;  // List of algorithms which actually support block size grid search
-
-	std::vector<int> user_blocksize_x;			// Parameters for blocksize grid search in x dimension, as user specified
-	std::vector<int> user_blocksize_y;			// Parameters for blocksize grid search in y dimension, as user specified
-	std::vector<int> user_blocksize_z;			// Parameters for blocksize grid search in z dimension, as user specified
-
-	std::array<int, 3> blocksize_x;			// Actual parameters for blocksize grid search in x dimension
-	std::array<int, 3> blocksize_y;			// Actual parameters for blocksize grid search in y dimension
-	std::array<int, 3> blocksize_z;			// Actual parameters for blocksize grid search in z dimension
-
+        std::vector<std::string> ccl_parallel_average_ws_algorithms; // List of algorithms which actually support parallel average with steps tests
+        std::vector<std::string> ccl_parallel_granularity_algorithms;
+    
 	::filesystem::path mode_output_path;
 
 	ModeConfig(std::string _mode, const cv::FileNode& fn);
@@ -92,7 +90,9 @@ struct GlobalConfig {
 	std::string density_folder;					// Folder which will store density results
 	std::string granularity_folder;				// Folder which will store granularity results
 	std::string memory_folder;					// Folder which will store memory results
-
+        std::string parallel_average_ws_folder; // Folder which will store parallel average with steps results
+        std::string parallel_granularity_folder;
+    
 	::filesystem::path glob_output_path;						// Path on which results are stored
 	::filesystem::path input_path;							// Path on which input datasets are stored
 
@@ -104,6 +104,9 @@ struct GlobalConfig {
 	bool density_color_labels;           // If true, labeled image from density tests will be colored and stored
 	bool write_n_labels;                 // If true, the number of components generated by the algorithms will be stored in the output file
 
+        // Maxmium number of threads to be used in parallel_average_tests_with_steps
+        int parallel_max_threads = 1;
+    
 	// da decidere dove e in che forma infilare   
 	::filesystem::path latex_path;                      // Path on which latex report will be stored
 

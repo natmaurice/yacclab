@@ -104,26 +104,27 @@ struct listaPadres listaGeneral[MAX_NUM_THREADS];
 
 ///%%%%%%%%%%%%%%%%%%%%%%///////////////////%%%%%%%%%%%%%%%%%%%%%%%%
 
+template <typename ConfFeatures = ConfFeatures2DNone>
 class labeling_CCLHSF : public Labeling2D<Connectivity2D::CONN_8, true> {
 public:
 
 	void PerformLabeling()
 	{
-		N_ROWS = img_.rows, N_COLS = img_.cols;
+		N_ROWS = this->img_.rows, N_COLS = this->img_.cols;
 
 
-		img_labels_ = cv::Mat1i(img_.size()); // Memory allocation for the output image
+		this->img_labels_ = cv::Mat1i(this->img_.size()); // Memory allocation for the output image
 											  // jumps accross the image (positive for FG, negative for BG)
 		cv::Mat1i imgJ ;
-		imgJ = cv::Mat1i(img_.size());
+		imgJ = cv::Mat1i(this->img_.size());
 
 		if (N_ROWS == 1 && N_COLS == 1) {
-			n_labels_ = 1;
+			this->n_labels_ = 1;
 			return;
 		}
 		int numHilos;
 
-		cv::Mat1b& img_ref = img_;
+		cv::Mat1b& img_ref = this->img_;
 		
 #define NOF_ASKED_THREADS 8
 		omp_set_num_threads(NOF_ASKED_THREADS);
@@ -140,26 +141,26 @@ public:
 			if (id == 0) {
 
 				for (int i = 0; i < numHilos; i++) {
-					listaGeneral[i].padresI = (int*)malloc(trozo * img_.cols * sizeof(int) / 4);
-					listaGeneral[i].padresJ = (int*)malloc(trozo * img_.cols * sizeof(int) / 4);
+					listaGeneral[i].padresI = (int*)malloc(trozo * this->img_.cols * sizeof(int) / 4);
+					listaGeneral[i].padresJ = (int*)malloc(trozo * this->img_.cols * sizeof(int) / 4);
 					listaGeneral[i].numPadres = 0;
-					listaGeneral[i].saltos = (int*)malloc(trozo * img_.cols * sizeof(int) / 4);
+					listaGeneral[i].saltos = (int*)malloc(trozo * this->img_.cols * sizeof(int) / 4);
 				}
 
-				init_borders(img_, imgJ, listaGeneral, numHilos, trozo);
+				init_borders(this->img_, imgJ, listaGeneral, numHilos, trozo);
 
 			}
 #pragma omp barrier
 			// initializing Jump matrices
 			trozo = (N_ROWS / numHilos);
 
-			J_init(img_, imgJ, &listaGeneral[id], id, trozo);
+			J_init(this->img_, imgJ, &listaGeneral[id], id, trozo);
 #pragma omp barrier
 			J_computation(imgJ, &listaGeneral[id], id, trozo);
 
 		}
 		// transports
-		Transports_only(img_, imgJ, listaGeneral); 
+		Transports_only(this->img_, imgJ, listaGeneral); 
 
 												   // label assignement 
 		int nLabel = 0;
@@ -167,7 +168,7 @@ public:
 		{
 			int id = omp_get_thread_num();
 			int trozo = N_ROWS / numHilos;
-			nLabel = Labelling_only(&img_, &imgJ, &img_labels_, id, numHilos);
+			nLabel = Labelling_only(&this->img_, &imgJ, &this->img_labels_, id, numHilos);
 		}
 		for (int i = 0; i < numHilos; i++) {
 			free(listaGeneral[i].padresI);
@@ -176,7 +177,7 @@ public:
 
 		}
 
-		n_labels_ = nLabel+1;
+		this->n_labels_ = nLabel+1;
 
 	}
 
@@ -184,21 +185,21 @@ public:
 	{
 		double alloc_timing = Alloc();
 
-		perf_.start();
+		this->perf_.start();
 		AllScans();
-		perf_.stop();
-		perf_.store(Step(StepType::ALL_SCANS), perf_.last());
+		this->perf_.stop();
+		this->perf_.store(Step(StepType::ALL_SCANS), this->perf_.last());
 
-		perf_.start();
+		this->perf_.start();
 		Dealloc();
-		perf_.stop();
-		perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
+		this->perf_.stop();
+		this->perf_.store(Step(StepType::ALLOC_DEALLOC), this->perf_.last() + alloc_timing);
 	}
 
 	void PerformLabelingMem(std::vector<uint64_t>& accesses)
 	{
-		MemMat<uchar> img(img_);
-		MemMat<int> img_labels(img_.size());
+		MemMat<uchar> img(this->img_);
+		MemMat<int> img_labels(this->img_.size());
 
 		for (int r = 0; r < img_labels.rows; ++r) {
 			for (int c = 0; c < img_labels.cols; ++c) {
@@ -217,15 +218,15 @@ private:
 	double Alloc()
 	{
 		// Memory allocation for the output image
-		perf_.start();
-		img_labels_ = cv::Mat1i(img_.size());
-		memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-		perf_.stop();
-		double t = perf_.last();
-		perf_.start();
-		memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-		perf_.stop();
-		double ma_t = t - perf_.last();
+		this->perf_.start();
+		this->img_labels_ = cv::Mat1i(this->img_.size());
+		memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+		this->perf_.stop();
+		double t = this->perf_.last();
+		this->perf_.start();
+		memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+		this->perf_.stop();
+		double ma_t = t - this->perf_.last();
 		// Return total time
 		return ma_t;
 	}
@@ -235,12 +236,12 @@ private:
 	}
 	void AllScans()
 	{
-		for (int r = 0; r < img_labels_.rows; ++r) {
+		for (int r = 0; r < this->img_labels_.rows; ++r) {
 			// Get rows pointer
-			const uchar* const img_row = img_.ptr<uchar>(r);
-			unsigned* const img_labels_row = img_labels_.ptr<unsigned>(r);
+			const uchar* const img_row = this->img_.template ptr<uchar>(r);
+			unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(r);
 
-			for (int c = 0; c < img_labels_.cols; ++c) {
+			for (int c = 0; c < this->img_labels_.cols; ++c) {
 				img_labels_row[c] = img_row[c];
 			}
 		}
@@ -271,11 +272,11 @@ void init_2LookUpTables_and_infection_process(const cv::Mat1b &I, cv::Mat1i &J, 
 	for (RowColType r = filaInicial; r < filaFinal; r++) {
 
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 		for (RowColType c = 1; c < N_COLS; c++) {
 			if ((img_row[c] == BG)) {
@@ -310,11 +311,11 @@ void init_2LookUpTables_and_infection_process(const cv::Mat1b &I, cv::Mat1i &J, 
 	for (RowColType r = filaFinal - 1; r >= filaInicial; r--) {
 
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 		for (int c = N_COLS - 2; c >= 0; c--) {
 			if ((img_row[c] == FG)) {
 				RowColType R = img_row[c + 1];
@@ -360,11 +361,11 @@ void J_init(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres* lista, int id,
 	for (RowColType r = filaInicial; r < filaFinal; r++) {
 
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 		for (RowColType c = 1; c < N_COLS - 1; c++) {
 			if ((img_row[c] == FG)) {
@@ -414,7 +415,7 @@ void J_computation(cv::Mat1i &J, struct listaPadres* lista, int id, int trozo) {
 
 	for (int r = filaInicial; r < filaFinal; r++) {
 		// Get rows pointers
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
    // forward travelling  or run promotes BG pixel jumps in a sequential fashion !
 		for (int c = 0; c < N_COLS; c++) {
@@ -435,7 +436,7 @@ void J_computation(cv::Mat1i &J, struct listaPadres* lista, int id, int trozo) {
 
 	for (int r = filaFinal - 1; r >= filaInicial; r--) {
 		// Get rows pointers
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 													   // reverse travelling  or run promotes FG pixel jumps in a sequential fashion !
 		for (int c = N_COLS - 1; c >= 0; c--) {
@@ -479,7 +480,7 @@ void Jonly_infection_process_original(cv::Mat1i &J, struct listaPadres* lista, i
 		numCambios = 0;
 		for (int r = filaInicial; r < filaFinal; r++) {
 			// Get rows pointers
-			int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+			int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 														   // forward travelling  or run promotes BG pixel jumps in a sequential fashion !
 			for (int c = 0; c < N_COLS; c++) {
@@ -716,11 +717,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 
 		r = 0;  c = 0;
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 		if ((img_row[c] == FG))
 		{
@@ -747,11 +748,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 		RowColType r, c;
 		r = 0;  c = N_COLS - 1;
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 		if ((img_row[c] == FG))
 		{
 			ImageType R = !img_row[c]; // img_row[c + 1];
@@ -780,11 +781,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 		RowColType r, c;
 		r = N_ROWS - 1;  c = 0;
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 		if ((img_row[c] == FG))
 		{
@@ -815,11 +816,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 		RowColType r, c;
 		r = N_ROWS - 1;  c = N_COLS - 1;
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 		if ((img_row[c] == FG))
 		{
 			imgJump_row[c] = 0; //undefined  
@@ -845,11 +846,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 
 		if (id >(omp_get_num_threads() - 1)) id = id - 1;
 		// Get rows pointers
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 		RowColType c;
 
@@ -907,11 +908,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 		RowColType r;
 		r = 0;
 		// Get rows pointers @this has been extracted from the loop (be careful with omp variable scopes)
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
     //#pragma omp parallel for schedule(_OMP_SCHEDULING, CHUNK_SIZE)
 		for (RowColType c = 1; c < N_COLS - 1; c++) {
@@ -945,11 +946,11 @@ void init_borders(const cv::Mat1b &I, cv::Mat1i &J, struct listaPadres *lista, i
 		RowColType r;
 		r = N_ROWS - 1;
 		// Get rows pointers @this has been extracted from the loop (be careful with omp variable scopes)
-		const uchar* const img_row = I.ptr<uchar>(r);
+		const uchar* const img_row = I.template ptr<uchar>(r);
 		const uchar* const img_row_fol = (uchar *)(((char *)img_row) + I.step.p[0]); //pointer to the following row
 		const uchar* const img_row_pre = (uchar *)(((char *)img_row) - I.step.p[0]); //pointer to the previous row
 
-		int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+		int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 													   //#pragma omp parallel for schedule(_OMP_SCHEDULING, CHUNK_SIZE)
 		for (RowColType c = 1; c < N_COLS - 1; c++) {
@@ -1010,7 +1011,7 @@ int Jonly_transports_lots_of_searches(int R_SHIFT_SEARCH, int C_SHIFT_SEARCH, in
 	int inner_FG_crit_cells_backwards = 0;
 #endif
 	// Get row pointer to the most left upper pixel 
-	int* const imgJump_row_origin = (int*)J.ptr<uint>(0); //sign is required here. 
+	int* const imgJump_row_origin = (int*)J.template ptr<uint>(0); //sign is required here. 
 
 														  // Because FG has more connectivity, it has less critical cells. It is preferable transporting false critical FG cells than BG ones
 #ifdef DEBUG_INNER_STATISTICS
@@ -1028,7 +1029,7 @@ int Jonly_transports_lots_of_searches(int R_SHIFT_SEARCH, int C_SHIFT_SEARCH, in
 		// Get rows pointers
 			int r = lista->padresI[k];
 			int c = lista->padresJ[k];
-			int* const imgJump_row = (int*)J.ptr<uint>(r); //sign is required here. 
+			int* const imgJump_row = (int*)J.template ptr<uint>(r); //sign is required here. 
 
 			JumpType *pjump_rc = &(imgJump_row[c]);
 			JumpType jump_rc = lista->saltos[k];

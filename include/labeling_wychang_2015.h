@@ -39,6 +39,8 @@
 
 template <typename LabelsSolver>
 class CCIT : public Labeling2D<Connectivity2D::CONN_8> {
+protected:
+    LabelsSolver ET;
 public:
     CCIT() {}
 
@@ -49,8 +51,8 @@ public:
         int w = img_labels_.cols;
         int h = img_labels_.rows;
 
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Alloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.Setup();
 
         int lx, u, v, k;
 
@@ -75,9 +77,9 @@ public:
 #define LOAD_QK k = img_labels_row_prev_prev[x]
 #define LOAD_RV v = img_labels_row_prev_prev[x+2]
 #define LOAD_RK k = img_labels_row_prev_prev[x+2]
-#define NEW_LABEL lx = img_labels_row[x] = LabelsSolver::NewLabel();
-#define RESOLVE_2(u, v) LabelsSolver::Merge(u,v);
-#define RESOLVE_3(u, v, k) LabelsSolver::Merge(u,LabelsSolver::Merge(v,k));
+#define NEW_LABEL lx = img_labels_row[x] = ET.NewLabel();
+#define RESOLVE_2(u, v) ET.Merge(u,v);
+#define RESOLVE_3(u, v, k) ET.Merge(u,ET.Merge(v,k));
 
         bool nextprocedure2;
 
@@ -107,7 +109,7 @@ public:
         }
 
         // Second scan (changed with better performing strategy to handle odd rows and columns)
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         int e_rows = img_labels_.rows & 0xfffffffe;
         bool o_rows = img_labels_.rows % 2 == 1;
@@ -126,7 +128,7 @@ public:
             for (; c < e_cols; c += 2) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -155,7 +157,7 @@ public:
             if (o_cols) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -180,7 +182,7 @@ public:
             for (; c < e_cols; c += 2) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -199,7 +201,7 @@ public:
             if (o_cols) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -211,7 +213,7 @@ public:
             }
         }
 
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
 
 #undef CONDITION_B1 
 #undef CONDITION_B2 
@@ -241,22 +243,28 @@ public:
 
     void PerformLabelingWithSteps()
     {
-        double alloc_timing = Alloc();
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+	
+	double alloc_timing = Alloc();
 
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed,
+			  this->samplers, size);
+
+        SecondScan(elapsed);
 
         perf_.start();
         Dealloc();
         perf_.stop();
         perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
+
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
 
     void PerformLabelingMem(std::vector<uint64_t>& accesses)
@@ -265,8 +273,8 @@ public:
         MemMat<unsigned char> img(img_);
         MemMat<int> img_labels(img_.size(), 0);
 
-        LabelsSolver::MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::MemSetup();
+        ET.MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.MemSetup();
 
         // First scan
         int w(img_.cols);
@@ -295,9 +303,9 @@ public:
 #define LOAD_QK k = img_labels(y - 2, x)
 #define LOAD_RV v = img_labels(y - 2, x+2)
 #define LOAD_RK k = img_labels(y - 2, x+2)
-#define NEW_LABEL lx = img_labels(y, x) = LabelsSolver::MemNewLabel();
-#define RESOLVE_2(u, v) LabelsSolver::MemMerge(u,v);
-#define RESOLVE_3(u, v, k) LabelsSolver::MemMerge(u,LabelsSolver::MemMerge(v,k));
+#define NEW_LABEL lx = img_labels(y, x) = ET.MemNewLabel();
+#define RESOLVE_2(u, v) ET.MemMerge(u,v);
+#define RESOLVE_3(u, v, k) ET.MemMerge(u,ET.MemMerge(v,k));
 
         bool nextprocedure2;
 
@@ -317,14 +325,14 @@ public:
             }
         }
 
-        n_labels_ = LabelsSolver::MemFlatten();
+        n_labels_ = ET.MemFlatten();
 
         // Second scan
         for (int r = 0; r < h; r += 2) {
             for (int c = 0; c < w; c += 2) {
                 int iLabel = img_labels(r, c);
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::MemGetLabel(iLabel);
+                    iLabel = ET.MemGetLabel(iLabel);
                     if (img(r, c) > 0)
                         img_labels(r, c) = iLabel;
                     else
@@ -373,11 +381,11 @@ public:
 
         accesses[MD_BINARY_MAT] = (uint64_t)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (uint64_t)img_labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)ET.MemTotalAccesses();
 
         img_labels_ = img_labels.GetImage();
 
-        LabelsSolver::MemDealloc();
+        ET.MemDealloc();
 
 #undef CONDITION_B1 
 #undef CONDITION_B2 
@@ -410,7 +418,7 @@ private:
     double Alloc()
     {
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
         // Memory allocation for the output image
         perf_.start();
         img_labels_ = cv::Mat1i(img_.size());
@@ -426,13 +434,13 @@ private:
     }
     void Dealloc()
     {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan()
     {
         memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart); // Initialization
-        LabelsSolver::Setup();
+        ET.Setup();
 
         // First Scan
         int w = img_labels_.cols;
@@ -461,9 +469,9 @@ private:
 #define LOAD_QK k = img_labels_row_prev_prev[x]
 #define LOAD_RV v = img_labels_row_prev_prev[x+2]
 #define LOAD_RK k = img_labels_row_prev_prev[x+2]
-#define NEW_LABEL lx = img_labels_row[x] = LabelsSolver::NewLabel();
-#define RESOLVE_2(u, v) LabelsSolver::Merge(u,v);
-#define RESOLVE_3(u, v, k) LabelsSolver::Merge(u,LabelsSolver::Merge(v,k));
+#define NEW_LABEL lx = img_labels_row[x] = ET.NewLabel();
+#define RESOLVE_2(u, v) ET.Merge(u,v);
+#define RESOLVE_3(u, v, k) ET.Merge(u,ET.Merge(v,k));
 
         bool nextprocedure2;
 
@@ -518,11 +526,19 @@ private:
 #undef RESOLVE_3
     }
 
-    void SecondScan()
+    void SecondScan(Labeling::StepsDuration& elapsed)
     {
-        // Second scan (changed with better performing strategy to handle odd rows and columns)
-        n_labels_ = LabelsSolver::Flatten();
 
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+
+	// Second scan (changed with better performing strategy to handle odd rows and columns)
+	MEASURE_STEP_TIME(
+	    this->n_labels_ = ET.Flatten(),
+	    StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
+
+	
         int e_rows = img_labels_.rows & 0xfffffffe;
         bool o_rows = img_labels_.rows % 2 == 1;
         int e_cols = img_labels_.cols & 0xfffffffe;
@@ -540,7 +556,7 @@ private:
             for (; c < e_cols; c += 2) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -569,7 +585,7 @@ private:
             if (o_cols) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -594,7 +610,7 @@ private:
             for (; c < e_cols; c += 2) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else
@@ -613,7 +629,7 @@ private:
             if (o_cols) {
                 int iLabel = img_labels_row[c];
                 if (iLabel > 0) {
-                    iLabel = LabelsSolver::GetLabel(iLabel);
+                    iLabel = ET.GetLabel(iLabel);
                     if (img_row[c] > 0)
                         img_labels_row[c] = iLabel;
                     else

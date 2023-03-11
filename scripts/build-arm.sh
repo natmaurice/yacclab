@@ -1,0 +1,50 @@
+#!/bin/bash
+
+export CC=gcc
+export CXX=g++
+#-DYACCLAB_ENABLE_EPDT_19C=1 -DYACCLAB_ENABLE_EPDT_D22C=1 -DYACCLAB_ENABLE_EPDT_26C=1
+#-DYACCLAB_ENABLE_3D=1
+export USE_EPDT="-DYACCLAB_ENABLE_EPDT_19C=0 -DYACCLAB_ENABLE_EPDT_22C=1 -DYACCLAB_ENABLE_EPDT_26C=0"
+
+TARGET_TYPE="Release"
+
+DEFINE_OPTIONS="-DMEASURE_EACH_STEP=1"
+
+
+ASAN_OPTIONS="-fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined"
+WARN_OPTIONS="-Wall -Wno-unused-label -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -Wno-unused-but-set-variable -Wno-reorder"
+
+COMPILE_COMMON_OPTIONS="-std=c++14  ${WARN_OPTIONS} ${DEFINE_OPTIONS}"
+
+COMPILE_DEBUG_OPTIONS=" ${COMPILE_COMMON_OPTIONS} -g3 -march=native -O0 -ggdb ${ASAN_OPTIONS}"
+LINKER_DEBUG_OPTIONS="-g"
+
+COMPILE_RELEASE_OPTIONS=" ${COMPILE_COMMON_OPTIONS} -march=native -O3"
+LINKER_RELEASE_OPTIONS=""
+
+COMPILE_OPTIONS=""
+LINKER_OPTIONS=""
+
+INPUT_PATH="/data/home/maurice/CCL/yacclab/build/input"
+OUTPUT_PATH="/data/home/maurice/CCL/yacclab/build/output"
+
+
+if [[ $TARGET_TYPE == "Release" ]]; then
+    echo "Targeting Release"
+    COMPILE_OPTIONS=$COMPILE_RELEASE_OPTIONS
+    LINKER_OPTIONS=$LINKER_RELEASE_OPTIONS
+else
+    echo "Targeting Debug"
+    COMPILE_OPTIONS=$COMPILE_DEBUG_OPTIONS
+    LINKER_OPTIONS=$LINKER_DEBUG_OPTIONS
+fi
+
+
+cmake .. -DCMAKE_BUILD_TYPE=$TARGET_TYPE \
+	-DYACCLAB_ENABLE_3D=1 \
+	-DYACCLAB_ENABLE_PAPI=0 \
+	-DYACCLAB_INPUT_DATASET_PATH=$INPUT_PATH -DYACCLAB_OUTPUT_RESULTS_PATH=$OUTPUT_PATH \
+	-DCMAKE_CXX_FLAGS="${COMPILE_OPTIONS}" \
+      	-DCMAKE_EXE_LINKER_FLAGS="${LINKER_OPTIONS}" $USE_EPDT
+make -j 4
+

@@ -15,7 +15,11 @@
 
 #include "system_info.h"
 
-using namespace std;
+// Note: We use <filesystem> for directory creation (replaces the system() function)
+// Functions from the C++ library (std::filesystem::) should not be mistaken with YACCLAB functions.
+//#include <filesystem>
+
+
 
 const char ::filesystem::path::separator_ =
 #ifdef YACCLAB_WINDOWS
@@ -23,6 +27,9 @@ const char ::filesystem::path::separator_ =
 #else
 '/';
 #endif
+
+using string = std::string;
+using error_code = std::error_code;
 
 bool ::filesystem::exists(const path& p)
 {
@@ -82,8 +89,19 @@ bool ::filesystem::create_directories(const path& p)
 #endif
 
     if (!exists(s)) {
+
+	const std::string dirname = s;
+	std::error_code err;
+
+	
+	//if (!std::filesystem::create_directory(s, err)) {
+	//    std::cerr << "Unable to find/create output path " << s << ": " << err << "\n";
+	//    return false;
+	//}
+	
         if (system(("mkdir " + parameters + " \"" + s + "\"").c_str()) != 0) {
-            //cerr << "Unable to find/create the output path " + s;
+	    std::cerr << "Unable to find/create the output path " + s;
+	    perror("Err: ");
             return false;
         }
     }
@@ -114,8 +132,8 @@ void ::filesystem::copy(const path& from, const path& to)
 
     if (!::filesystem::exists(to)) {
         if (::filesystem::create_directories(to.parent_path())) {
-            ifstream src(from.string());
-            ofstream dst(to.string());
+	    std::ifstream src(from.string());
+	    std::ofstream dst(to.string());
 
             dst << src.rdbuf();
         }

@@ -98,6 +98,8 @@ public:
 template <typename LabelsSolver>
 class RBTS : public Labeling2D<Connectivity2D::CONN_8>
 {
+protected:
+    LabelsSolver ET;
 public:
     RBTS() {}
 
@@ -105,8 +107,8 @@ public:
     {
         img_labels_ = cv::Mat1i(img_.size(), 0); // Call to memset
 
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Alloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.Setup();
 
         // Scan Mask (Rosenfeld)
         // +-+-+-+
@@ -195,7 +197,7 @@ public:
                     // from the queue is found at p(h) -> p(r - 1, h % w).
                     while (t <= e - w) {
                         if (next) {
-                            LabelsSolver::Merge(img_labels_row_prev[h % w], val);
+                            ET.Merge(img_labels_row_prev[h % w], val);
                         }
                         next = true;
                         h = s_queue.DequeueAndFront();
@@ -230,13 +232,13 @@ public:
                     // paper in which the border is always considered black (background).
                     if (h <= e - w + crb) {
                         if (next) {
-                            LabelsSolver::Merge(img_labels_row[s % w], img_labels_row_prev[h % w]);
+                            ET.Merge(img_labels_row[s % w], img_labels_row_prev[h % w]);
                         }
                     }
                 }
                 else {
                     // Otherwise it is a run not connected to any other, so we need a new label
-                    unsigned val = LabelsSolver::NewLabel();
+                    unsigned val = ET.NewLabel();
                     unsigned start = s % w;
                     for (unsigned i = start; i < start + e - s + 1; ++i) {
                         img_labels_row[i] = val;
@@ -246,7 +248,7 @@ public:
             }//End columns's for
         }//End rows's for
 
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         // Second scan
         for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
@@ -254,11 +256,11 @@ public:
             unsigned int* img_labels_row_end = img_labels_row_start + img_labels_.cols;
             unsigned int* img_labels_row = img_labels_row_start;
             for (int c_i = 0; img_labels_row != img_labels_row_end; ++img_labels_row, ++c_i) {
-                *img_labels_row = LabelsSolver::GetLabel(*img_labels_row);
+                *img_labels_row = ET.GetLabel(*img_labels_row);
             }
         }
 
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
     }
 
     void PerformLabelingWithSteps()
@@ -286,7 +288,7 @@ private:
     double Alloc()
     {
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
         // Memory allocation for the output image
         perf_.start();
         img_labels_ = cv::Mat1i(img_.size());
@@ -319,13 +321,13 @@ private:
     }
     void Dealloc()
     {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan()
     {
         memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart); // Initialization
-        LabelsSolver::Setup();
+        ET.Setup();
 
         // Scan Mask (Rosenfeld)
         // +-+-+-+
@@ -409,7 +411,7 @@ private:
                     // from the queue is found at p(h) -> p(r - 1, h % w).
                     while (t <= e - w) {
                         if (next) {
-                            LabelsSolver::Merge(img_labels_row_prev[h % w], val);
+                            ET.Merge(img_labels_row_prev[h % w], val);
                         }
                         next = true;
                         h = s_queue_.DequeueAndFront();
@@ -444,13 +446,13 @@ private:
                     // paper in which the border is always considered black (background).
                     if (h <= e - w + crb) {
                         if (next) {
-                            LabelsSolver::Merge(img_labels_row[s % w], img_labels_row_prev[h % w]);
+                            ET.Merge(img_labels_row[s % w], img_labels_row_prev[h % w]);
                         }
                     }
                 }
                 else {
                     // Otherwise it is a run not connected to any other, so we need a new label
-                    unsigned val = LabelsSolver::NewLabel();
+                    unsigned val = ET.NewLabel();
                     unsigned start = s % w;
                     for (unsigned i = start; i < start + e - s + 1; ++i) {
                         img_labels_row[i] = val;
@@ -463,7 +465,7 @@ private:
     }
     void SecondScan()
     {
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         // Second scan
         for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
@@ -471,7 +473,7 @@ private:
             unsigned int* img_labels_row_end = img_labels_row_start + img_labels_.cols;
             unsigned int* img_labels_row = img_labels_row_start;
             for (int c_i = 0; img_labels_row != img_labels_row_end; ++img_labels_row, ++c_i) {
-                *img_labels_row = LabelsSolver::GetLabel(*img_labels_row);
+                *img_labels_row = ET.GetLabel(*img_labels_row);
             }
         }
     }

@@ -26,7 +26,7 @@ template <typename LabelsSolver>
 class BMRS : public Labeling2D<Connectivity2D::CONN_8>
 {
     struct Data_Compressed {
-        uint64_t* bits;
+        uint64_t* bits = nullptr;
         int height;
         int width;
         int data_width;
@@ -34,12 +34,14 @@ class BMRS : public Labeling2D<Connectivity2D::CONN_8>
             return bits + data_width * row;
         }
         void Alloc(int _height, int _width) {
+	    Dealloc();
             height = _height, width = _width;
             data_width = _width / 64 + 1;
             bits = new uint64_t[height * data_width];
         }
         void Dealloc() {
             delete[] bits;
+	    bits = nullptr;
         }
     };
     struct Run {
@@ -48,7 +50,7 @@ class BMRS : public Labeling2D<Connectivity2D::CONN_8>
         unsigned label;
     };
     struct Runs {
-        Run* runs;
+        Run* runs = nullptr;
         unsigned height;
         unsigned  width;
         void Alloc(int _height, int _width) {
@@ -57,6 +59,7 @@ class BMRS : public Labeling2D<Connectivity2D::CONN_8>
         }
         void Dealloc() {
             delete[] runs;
+	    runs = nullptr;
         }
     };
     Data_Compressed data_compressed;
@@ -64,6 +67,7 @@ class BMRS : public Labeling2D<Connectivity2D::CONN_8>
     Data_Compressed data_flags;
     Runs data_runs;
 
+    LabelsSolver ET;
 public:
     BMRS() {}
     void PerformLabeling()
@@ -71,13 +75,11 @@ public:
         int w(img_.cols);
         int h(img_.rows);
 
-        data_compressed.Alloc(h, w);
         InitCompressedData(data_compressed);
 
         //generate merged data
         int h_merge = h / 2 + h % 2;
         int data_width = data_compressed.data_width;
-        data_merged.Alloc(h_merge, w);
         for (int i = 0; i < h / 2; i++) {
             uint64_t* pdata_source1 = data_compressed[2 * i];
             uint64_t* pdata_source2 = data_compressed[2 * i + 1];
@@ -112,78 +114,107 @@ public:
         }
 
         //find runs
-        data_runs.Alloc(h_merge, w);
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Setup();
         FindRuns(data_merged.bits, data_flags.bits, h_merge, data_width, data_runs.runs);
 
-        img_labels_ = cv::Mat1i(img_.size(), 0);    // (0-init)
+        img_labels_ = cv::Mat1i(img_.size(), 0);    // New version (0-init)
 
-        // New version (uses 1-byte per pixel input)
+        // New version (only uses bitonal input)
         Run* runs = data_runs.runs;
-        for (int i = 0; i < h / 2; i++) {
-            const uint64_t* const data_u = data_compressed.bits + data_compressed.data_width * 2 * i;
+        for (int r = 0; r < h / 2; r++) {
+            const uint64_t* const data_u = data_compressed.bits + data_compressed.data_width * 2 * r;
             const uint64_t* const data_d = data_u + data_compressed.data_width;
-            unsigned* const labels_u = img_labels_.ptr<unsigned>(2 * i);
-            unsigned* const labels_d = img_labels_.ptr<unsigned>(2 * i + 1);
+            unsigned* const labels_u = img_labels_.ptr<unsigned>(2 * r);
+            unsigned* const labels_d = img_labels_.ptr<unsigned>(2 * r + 1);
 
-            for (;; runs++) {
+            uint64_t curr_word_u;
+            uint64_t curr_word_d;
+            unsigned short curr_word_ind = -1;
+
+            for (int j = 0;; runs++) {
                 unsigned short start_pos = runs->start_pos;
                 if (start_pos == 0xFFFF) {
                     runs++;
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::GetLabel(runs->label);
+                int label = ET.GetLabel(runs->label);
 
-                for (int j = start_pos; j < end_pos; j++) {
-                    if (data_u[j >> 6] & (1ull << (j & 0x3F))) labels_u[j] = label;
-                    if (data_d[j >> 6] & (1ull << (j & 0x3F))) labels_d[j] = label;
+                if (label) {
+
+                    for (unsigned short c = start_pos; c < end_pos; ++c) {
+
+                        unsigned short needed_word_ind = c / 64;
+                        if (needed_word_ind != curr_word_ind) {
+                            curr_word_u = data_u[needed_word_ind];
+                            curr_word_d = data_d[needed_word_ind];
+                            curr_word_ind = needed_word_ind;
+                        }
+
+                        uint8_t bit_pos = c % 64;
+                        uint64_t mask = 1ull << bit_pos;
+                        uint64_t bit_u = curr_word_u & mask;
+                        uint64_t bit_d = curr_word_d & mask;
+
+                        if (bit_u) {
+                            labels_u[c] = label;
+                        }
+                        if (bit_d) {
+                            labels_d[c] = label;
+                        }
+                        
+                    }
+
                 }
             }
         }
         if (h % 2) {
             unsigned* const labels = img_labels_.ptr<unsigned>(h - 1);
-            for (;; runs++) {
+            for (int j = 0;; runs++) {
                 unsigned short start_pos = runs->start_pos;
                 if (start_pos == 0xFFFF) {
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::GetLabel(runs->label);
-                for (int j = start_pos; j < end_pos; j++) {
+                int label = ET.GetLabel(runs->label);
+                for (j = start_pos; j < end_pos; j++) {
                     labels[j] = label;
                 }
             }
         }
-
-
-        LabelsSolver::Dealloc();
-        data_runs.Dealloc();
-        data_flags.Dealloc();
-        data_merged.Dealloc();
-        data_compressed.Dealloc();
     }
+    
     void PerformLabelingWithSteps() {
+
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
+
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+
         double alloc_timing = Alloc();
-        InitCompressedData(data_compressed);
+	MEASURE_STEP_TIME(InitCompressedData(data_compressed), StepType::SETUP, this->perf_, elapsed,
+			  this->samplers, size);
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed,
+			  this->samplers, size);
 
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+	MEASURE_STEP_TIME(SecondScan(), StepType::RELABELING, this->perf_, elapsed,
+			  this->samplers, size);
 
         double t_runalloc = Get_RunAllocTime();
         perf_.start();
         Dealloc();
         perf_.stop();
         perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing + t_runalloc);
+
+	
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
+    
     void PerformLabelingMem(std::vector<uint64_t>& accesses) {
         //Data structure for memory test
         MemMat<unsigned char> img(img_);
@@ -234,8 +265,8 @@ public:
 
         //find runs
         data_runs.Alloc(h, w);
-        LabelsSolver::MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::MemSetup();
+        ET.MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.MemSetup();
         FindRunsMem(data_merged.bits, data_flags.bits, h_merge, data_width, data_runs.runs);
 
         Run* runs = data_runs.runs;
@@ -252,7 +283,7 @@ public:
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::MemGetLabel(runs->label);
+                int label = ET.MemGetLabel(runs->label);
 
                 for (; j < start_pos; j++) img_labels(i_u, j) = 0, img_labels(i_d, j) = 0;
                 for (; j < end_pos; j++) {
@@ -270,7 +301,7 @@ public:
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::MemGetLabel(runs->label);
+                int label = ET.MemGetLabel(runs->label);
                 for (; j < start_pos; j++) img_labels(i, j) = 0;
                 for (j = start_pos; j < end_pos; j++) img_labels(i, j) = label;
             }
@@ -281,11 +312,11 @@ public:
 
         accesses[MD_BINARY_MAT] = (uint64_t)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (uint64_t)img_labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)ET.MemTotalAccesses();
 
         img_labels_ = img_labels.GetImage();
 
-        LabelsSolver::MemDealloc();
+        ET.MemDealloc();
         data_runs.Dealloc();
         data_flags.Dealloc();
         data_merged.Dealloc();
@@ -491,7 +522,7 @@ private:
             }
             working_bits = (~working_bits) & (0xFFFFFFFFFFFFFFFF << bitpos);
             runs->end_pos = short(basepos + bitpos);
-            runs->label = LabelsSolver::NewLabel();
+            runs->label = ET.NewLabel();
         }
     out:
 
@@ -534,22 +565,22 @@ private:
                 if (runs_up->start_pos > end_pos) {
                     runs->start_pos = start_pos;
                     runs->end_pos = end_pos;
-                    runs->label = LabelsSolver::NewLabel();
+                    runs->label = ET.NewLabel();
                     continue;
                 };
 
                 //Next upper run can not meet this
                 unsigned short cross_st = (start_pos >= runs_up->start_pos) ? start_pos : runs_up->start_pos;
                 if (end_pos <= runs_up->end_pos) {
-                    if (is_connected(bits_f, cross_st, end_pos)) runs->label = LabelsSolver::GetLabel(runs_up->label);
-                    else runs->label = LabelsSolver::NewLabel();
+                    if (is_connected(bits_f, cross_st, end_pos)) runs->label = ET.GetLabel(runs_up->label);
+                    else runs->label = ET.NewLabel();
                     runs->start_pos = start_pos;
                     runs->end_pos = end_pos;
                     continue;
                 }
 
                 unsigned label;
-                if (is_connected(bits_f, cross_st, runs_up->end_pos)) label = LabelsSolver::GetLabel(runs_up->label);
+                if (is_connected(bits_f, cross_st, runs_up->end_pos)) label = ET.GetLabel(runs_up->label);
                 else label = 0;
                 runs_up++;
 
@@ -557,32 +588,32 @@ private:
                 for (; runs_up->start_pos <= end_pos; runs_up++) {
                     if (end_pos <= runs_up->end_pos) {
                         if (is_connected(bits_f, runs_up->start_pos, end_pos)) {
-                            unsigned label_other = LabelsSolver::GetLabel(runs_up->label);
+                            unsigned label_other = ET.GetLabel(runs_up->label);
                             if (label != label_other) {
-                                label = (label) ? LabelsSolver::Merge(label, label_other) : label_other;
+                                label = (label) ? ET.Merge(label, label_other) : label_other;
                             }
                         }
                         break;
                     }
                     else {
                         if (is_connected(bits_f, runs_up->start_pos, runs_up->end_pos)) {
-                            unsigned label_other = LabelsSolver::GetLabel(runs_up->label);
+                            unsigned label_other = ET.GetLabel(runs_up->label);
                             if (label != label_other) {
-                                label = (label) ? LabelsSolver::Merge(label, label_other) : label_other;
+                                label = (label) ? ET.Merge(label, label_other) : label_other;
                             }
                         }
                     }
                 }
 
                 if (label) runs->label = label;
-                else runs->label = LabelsSolver::NewLabel();
+                else runs->label = ET.NewLabel();
                 runs->start_pos = start_pos;
                 runs->end_pos = end_pos;
             }
         out2:
             runs_up = runs_save;
         }
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
     }
     void FindRunsMem(const uint64_t* bits_start, const uint64_t* bits_flag, int height, int data_width, Run* runs) {
         Run* runs_up = runs;
@@ -614,7 +645,7 @@ private:
             }
             working_bits = (~working_bits) & (0xFFFFFFFFFFFFFFFF << bitpos);
             runs->end_pos = short(basepos + bitpos);
-            runs->label = LabelsSolver::MemNewLabel();
+            runs->label = ET.MemNewLabel();
         }
     out:
 
@@ -657,22 +688,22 @@ private:
                 if (runs_up->start_pos > end_pos) {
                     runs->start_pos = start_pos;
                     runs->end_pos = end_pos;
-                    runs->label = LabelsSolver::MemNewLabel();
+                    runs->label = ET.MemNewLabel();
                     continue;
                 };
 
                 //Next upper run can not meet this
                 unsigned short cross_st = (start_pos >= runs_up->start_pos) ? start_pos : runs_up->start_pos;
                 if (end_pos <= runs_up->end_pos) {
-                    if (is_connected(bits_f, cross_st, end_pos)) runs->label = LabelsSolver::MemGetLabel(runs_up->label);
-                    else runs->label = LabelsSolver::MemNewLabel();
+                    if (is_connected(bits_f, cross_st, end_pos)) runs->label = ET.MemGetLabel(runs_up->label);
+                    else runs->label = ET.MemNewLabel();
                     runs->start_pos = start_pos;
                     runs->end_pos = end_pos;
                     continue;
                 }
 
                 unsigned label;
-                if (is_connected(bits_f, cross_st, runs_up->end_pos)) label = LabelsSolver::MemGetLabel(runs_up->label);
+                if (is_connected(bits_f, cross_st, runs_up->end_pos)) label = ET.MemGetLabel(runs_up->label);
                 else label = 0;
                 runs_up++;
 
@@ -680,32 +711,32 @@ private:
                 for (; runs_up->start_pos <= end_pos; runs_up++) {
                     if (end_pos <= runs_up->end_pos) {
                         if (is_connected(bits_f, runs_up->start_pos, end_pos)) {
-                            unsigned label_other = LabelsSolver::MemGetLabel(runs_up->label);
+                            unsigned label_other = ET.MemGetLabel(runs_up->label);
                             if (label != label_other) {
-                                label = (label) ? LabelsSolver::MemMerge(label, label_other) : label_other;
+                                label = (label) ? ET.MemMerge(label, label_other) : label_other;
                             }
                         }
                         break;
                     }
                     else {
                         if (is_connected(bits_f, runs_up->start_pos, runs_up->end_pos)) {
-                            unsigned label_other = LabelsSolver::MemGetLabel(runs_up->label);
+                            unsigned label_other = ET.MemGetLabel(runs_up->label);
                             if (label != label_other) {
-                                label = (label) ? LabelsSolver::MemMerge(label, label_other) : label_other;
+                                label = (label) ? ET.MemMerge(label, label_other) : label_other;
                             }
                         }
                     }
                 }
 
                 if (label) runs->label = label;
-                else runs->label = LabelsSolver::MemNewLabel();
+                else runs->label = ET.MemNewLabel();
                 runs->start_pos = start_pos;
                 runs->end_pos = end_pos;
             }
         out2:
             runs_up = runs_save;
         }
-        n_labels_ = LabelsSolver::MemFlatten();
+        n_labels_ = ET.MemFlatten();
     }
     uint64_t is_connected(const uint64_t* flag_bits, unsigned start, unsigned end) {
         if (start == end) return flag_bits[start >> 6] & ((uint64_t)1 << (start & 0x0000003F));
@@ -731,8 +762,11 @@ private:
 
 private:
     double Alloc() {
+	this->samplers.Reset();
+
+	Dealloc();
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
 
         int w(img_.cols);
         int h(img_.rows);
@@ -789,7 +823,7 @@ private:
         return t_result;
     }
     void Dealloc() {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         data_runs.Dealloc();
         data_flags.Dealloc();
         data_merged.Dealloc();
@@ -835,47 +869,74 @@ private:
             }
         }
 
-        LabelsSolver::Setup();
+        ET.Setup();
         FindRuns(data_merged.bits, data_flags.bits, h_merge, data_width, data_runs.runs);
     }
     void SecondScan() {
         int w(img_.cols);
         int h(img_.rows);
-
+	int size = w * h;
+	
         memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
 
         Run* runs = data_runs.runs;
-        for (int i = 0; i < h / 2; i++) {
-            const uint64_t* const data_u = data_compressed.bits + data_compressed.data_width * 2 * i;
+        for (int r = 0; r < h / 2; r++) {
+            const uint64_t* const data_u = data_compressed.bits + data_compressed.data_width * 2 * r;
             const uint64_t* const data_d = data_u + data_compressed.data_width;
-            unsigned* const labels_u = img_labels_.ptr<unsigned>(2 * i);
-            unsigned* const labels_d = img_labels_.ptr<unsigned>(2 * i + 1);
+            unsigned* const labels_u = img_labels_.ptr<unsigned>(2 * r);
+            unsigned* const labels_d = img_labels_.ptr<unsigned>(2 * r + 1);
 
-            for (;; runs++) {
+            uint64_t curr_word_u;
+            uint64_t curr_word_d;
+            unsigned short curr_word_ind = -1;
+
+            for (int j = 0;; runs++) {
                 unsigned short start_pos = runs->start_pos;
                 if (start_pos == 0xFFFF) {
                     runs++;
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::GetLabel(runs->label);
+                int label = ET.GetLabel(runs->label);
 
-                for (int j = start_pos; j < end_pos; j++) {
-                    if (data_u[j >> 6] & (1ull << (j & 0x3F))) labels_u[j] = label;
-                    if (data_d[j >> 6] & (1ull << (j & 0x3F))) labels_d[j] = label;
+                if (label) {
+
+                    for (unsigned short c = start_pos; c < end_pos; ++c) {
+
+                        unsigned short needed_word_ind = c / 64;
+                        if (needed_word_ind != curr_word_ind) {
+                            curr_word_u = data_u[needed_word_ind];
+                            curr_word_d = data_d[needed_word_ind];
+                            curr_word_ind = needed_word_ind;
+                        }
+
+                        uint8_t bit_pos = c % 64;
+                        uint64_t mask = 1ull << bit_pos;
+                        uint64_t bit_u = curr_word_u & mask;
+                        uint64_t bit_d = curr_word_d & mask;
+
+                        if (bit_u) {
+                            labels_u[c] = label;
+                        }
+                        if (bit_d) {
+                            labels_d[c] = label;
+                        }
+
+                    }
+
                 }
             }
         }
         if (h % 2) {
             unsigned* const labels = img_labels_.ptr<unsigned>(h - 1);
-            for (;; runs++) {
+            for (int j = 0;; runs++) {
                 unsigned short start_pos = runs->start_pos;
                 if (start_pos == 0xFFFF) {
                     break;
                 }
                 unsigned short end_pos = runs->end_pos;
-                int label = LabelsSolver::GetLabel(runs->label);
-                for (int j = start_pos; j < end_pos; j++) {
+                int label = ET.GetLabel(runs->label);
+                for (j = start_pos; j < end_pos; j++) {
                     labels[j] = label;
                 }
             }

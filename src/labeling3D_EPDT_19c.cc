@@ -6,4 +6,8 @@
 
 #include "labeling3D_EPDT_19c.h"
 
+template <typename LabelsSolver>
+using EPDT_3D_19c_CCA = EPDT_3D_19c<LabelsSolver, ConfFeatures3DAll>;
+
 REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(EPDT_3D_19c);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(EPDT_3D_19c_CCA);

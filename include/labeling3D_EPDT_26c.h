@@ -18,6 +18,8 @@
 #include "labeling_algorithms.h"
 #include "labels_solver.h"
 #include "memory_tester.h"
+#include "calc_features.hpp"
+
 
 #include "labeling3D_EPDT_26c_action_def.inc.h"
 
@@ -50,8 +52,10 @@
 #define CONDITION_XD c < w - 1 && r < h - 1 && img_slice00_row01[c + 1] > 0
 
 
-template <typename LabelsSolver>
-class EPDT_3D_26c : public Labeling3D<Connectivity3D::CONN_26> {
+template <typename LabelsSolver, typename ConfFeatures = ConfFeatures3DNone>
+class EPDT_3D_26c : public Labeling3D<Connectivity3D::CONN_26, ConfFeatures> {
+protected:
+    LabelsSolver ET;
 public:
     EPDT_3D_26c() {}
 
@@ -99,63 +103,63 @@ public:
     //		for (unsigned int s = 0; s < 2; s += 2) {
     //			for (unsigned int r = 0; r < h; r += 2) {
     //
-    //				const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+    //				const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
     //				// T, W lower slice (Xe-Xh)
-    //				//const unsigned char* const img_slice01_row12 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[0] + img_.step.p[1] * -2);
-    //				const unsigned char* const img_slice01_row11 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[0] + img_.step.p[1] * -1);
-    //				const unsigned char* const img_slice01_row00 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[0] + img_.step.p[1] * 0);
-    //				const unsigned char* const img_slice01_row01 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[0] + img_.step.p[1] * 1);
+    //				//const unsigned char* const img_slice01_row12 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				const unsigned char* const img_slice01_row11 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				const unsigned char* const img_slice01_row00 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				const unsigned char* const img_slice01_row01 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * 1);
     //
     //				// T, W upper slice (Xa-Xd)
-    //				//const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * -2);
-    //				const unsigned char* const img_slice00_row11 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * -1);
-    //				const unsigned char* const img_slice00_row01 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * 1);
+    //				//const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * -2);
+    //				const unsigned char* const img_slice00_row11 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * -1);
+    //				const unsigned char* const img_slice00_row01 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * 1);
     //
     //				// K, N, Q lower slice
-    //				//const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-    //				const unsigned char* const img_slice11_row11 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-    //				const unsigned char* const img_slice11_row00 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-    //				const unsigned char* const img_slice11_row01 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-    //				const unsigned char* const img_slice11_row02 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-    //				//const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+    //				//const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				const unsigned char* const img_slice11_row11 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				const unsigned char* const img_slice11_row00 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				const unsigned char* const img_slice11_row01 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+    //				const unsigned char* const img_slice11_row02 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+    //				//const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
     //
     //				//// K, N, Q upper slice
-    //				//const unsigned char* const img_slice12_row12 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-    //				//const unsigned char* const img_slice12_row11 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-    //				//const unsigned char* const img_slice12_row00 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-    //				//const unsigned char* const img_slice12_row01 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-    //				//const unsigned char* const img_slice12_row02 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-    //				//const unsigned char* const img_slice12_row03 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+    //				//const unsigned char* const img_slice12_row12 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				//const unsigned char* const img_slice12_row11 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				//const unsigned char* const img_slice12_row00 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				//const unsigned char* const img_slice12_row01 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+    //				//const unsigned char* const img_slice12_row02 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+    //				//const unsigned char* const img_slice12_row03 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
     //
     //				// Row pointers for the output image (current slice)
     //
     //				// T, W lower slice (Xe-Xh)
-    //				//unsigned* const img_labels_slice01_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[0] + img_.step.p[1] * -2);
-    //				//unsigned* const img_labels_slice01_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[0] + img_.step.p[1] * -1);
-    //				//unsigned* const img_labels_slice01_row00 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[0] + img_.step.p[1] * 0);
-    //				//unsigned* const img_labels_slice01_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[0] + img_.step.p[1] * 1);
+    //				//unsigned* const img_labels_slice01_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				//unsigned* const img_labels_slice01_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				//unsigned* const img_labels_slice01_row00 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				//unsigned* const img_labels_slice01_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[0] + this->img_.step.p[1] * 1);
     //
-    //				unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
+    //				unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
     //				// T, W upper slice (Xa-Xd)
-    //				unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[1] * -2);
-    //				//unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[1] * -1);
-    //				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_.step.p[1] * 1);
+    //				unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[1] * -2);
+    //				//unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[1] * -1);
+    //				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_.step.p[1] * 1);
     //
     //				// K, N, Q lower slice
-    //				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-    //				//unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-    //				//unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-    //				//unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-    //				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-    //				//unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+    //				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				//unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				//unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				//unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+    //				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+    //				//unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
     //
     //				//// K, N, Q upper slice
-    //				unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-    //				//unsigned* const img_labels_slice12_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-    //				unsigned* const img_labels_slice12_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-    //				//unsigned* const img_labels_slice12_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-    //				unsigned* const img_labels_slice12_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-    //				//unsigned* const img_labels_slice12_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+    //				unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+    //				//unsigned* const img_labels_slice12_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+    //				unsigned* const img_labels_slice12_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+    //				//unsigned* const img_labels_slice12_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+    //				unsigned* const img_labels_slice12_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+    //				//unsigned* const img_labels_slice12_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
     //				for (unsigned int c = 0; c < w; c += 2) {
     //#include "labeling3D_BBDT++3D_justequalsubtrees_tree.inc.h"
     //
@@ -204,18 +208,15 @@ public:
 
     void PerformLabeling()
     {
-        img_labels_.create(3, img_.size.p, CV_32SC1);
-
-        LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY); // Memory allocation of the labels solver
-        LabelsSolver::Setup(); // Labels solver initialization
+        ET.Setup(); // Labels solver initialization
 
         //// DEBUG
-        //LabelsSolver::MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
+        //ET.MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
 
         //MemVol<unsigned char> img(img_);
-        //MemVol<int> img_labels(img_.size.p, 0);
+        //MemVol<int> img_labels(this->img_.size.p, 0);
 
-        //LabelsSolver::MemSetup();
+        //ET.MemSetup();
         //// DEBUG - END
 
         // Rosenfeld Mask 3D
@@ -234,9 +235,9 @@ public:
         // +-+-+
 
         // First scan
-        unsigned int d = img_.size.p[0];
-        unsigned int h = img_.size.p[1];
-        unsigned int w = img_.size.p[2];
+        unsigned int d = this->img_.size.p[0];
+        unsigned int h = this->img_.size.p[1];
+        unsigned int w = this->img_.size.p[2];
 
         // First slice
         //FirstSlice(d, w, h);
@@ -245,51 +246,51 @@ public:
 
             for (unsigned int r = 0; r < h; r += 2) {
 
-                const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+                const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
                 // T, W slice
-                //const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * -2);
-                const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * -1);
+                //const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * -2);
+                const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * -1);
                 // img_slice00_row00 defined above
-                const unsigned char* const img_slice00_row01 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * 1);
+                const unsigned char* const img_slice00_row01 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * 1);
 
                 // K, N, Q slice
-                //const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-                const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-                const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-                const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-                const unsigned char* const img_slice11_row02 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-                //const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+                //const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+                const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+                const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+                const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+                const unsigned char* const img_slice11_row02 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+                //const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
 
 
                 // Row pointers for the output image (current slice)
-                unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
+                unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
                 // T, W slice
-                unsigned* const img_labels_slice00_row12 = (unsigned*)(((char*)img_labels_slice00_row00) + img_labels_.step.p[1] * -2);
-                //unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -1);
+                unsigned* const img_labels_slice00_row12 = (unsigned*)(((char*)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -2);
+                //unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -1);
                 // img_labels_slice00_row00 defined above
-                //unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * 1);
+                //unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * 1);
 
                 // K, N, Q slice
-                unsigned* const img_labels_slice11_row12 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -2);
-                //unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -1);
-                unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-                //unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 1);
-                unsigned* const img_labels_slice11_row02 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 2);
-                //unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 3);
+                unsigned* const img_labels_slice11_row12 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -2);
+                //unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -1);
+                unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+                //unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 1);
+                unsigned* const img_labels_slice11_row02 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 2);
+                //unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 3);
 
                 // V -- old -- V
                 //// Row pointers for the output image (current slice)
-                //unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
-                //unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -2);
-                //unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -1);
-                //unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * 1);
+                //unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
+                //unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -2);
+                //unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -1);
+                //unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * 1);
 
                 //// Row pointers for the output image (previous slice)
-                //unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -2);
-                //unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -1);
-                //unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-                //unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 1);
-                //unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 2);
+                //unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -2);
+                //unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -1);
+                //unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+                //unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 1);
+                //unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 2);
                 for (unsigned int c = 0; c < w; c += 2) {
                     if (!((CONDITION_XA) || (CONDITION_XB) || (CONDITION_XC) || (CONDITION_XD))) {
                         ACTION_0;
@@ -300,27 +301,28 @@ public:
         } // Planes cycle end
 
         // Second scan
-        LabelsSolver::Flatten();
-        //unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
+        this->n_labels_ = ET.Flatten();
+	
+        //unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
 
-        //char * img_labels_row = reinterpret_cast<char*>(img_labels_.data);
-        //unsigned char * img_row = reinterpret_cast<unsigned char*>(img_.data);
+        //char * img_labels_row = reinterpret_cast<char*>(this->img_labels_.data);
+        //unsigned char * img_row = reinterpret_cast<unsigned char*>(this->img_.data);
 
-        //const unsigned char* const img_row = img_.ptr<unsigned char>(0);
-        //unsigned* const img_labels_row = img_labels_.ptr<unsigned>(0);
+        //const unsigned char* const img_row = this->img_.template ptr<unsigned char>(0);
+        //unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(0);
 
-        //const unsigned char* const img_row = img_.ptr<unsigned char>();
-        //int* const img_labels_row = img_labels_.ptr<int>();
+        //const unsigned char* const img_row = this->img_.template ptr<unsigned char>();
+        //int* const img_labels_row = this->img_labels_.template ptr<int>();
 
         /*
         int r = 0;
         for (; r < e_rows; r += 2) {
             // Get rows pointer
-            const unsigned char* const img_row = img_.ptr<unsigned char>(r);
-            const unsigned char* const img_row_fol = (unsigned char *)(((char *)img_row) + img_.step.p[0]);
+            const unsigned char* const img_row = this->img_.template ptr<unsigned char>(r);
+            const unsigned char* const img_row_fol = (unsigned char *)(((char *)img_row) + this->img_.step.p[0]);
 
-            unsigned* const img_labels_row = img_labels_.ptr<unsigned>(r);
-            unsigned* const img_labels_row_fol = (unsigned *)(((char *)img_labels_row) + img_labels_.step.p[0]);
+            unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(r);
+            unsigned* const img_labels_row_fol = (unsigned *)(((char *)img_labels_row) + this->img_labels_.step.p[0]);
             int c = 0;
             for (; c < e_cols; c += 2) {
                 int iLabel = img_labels_row[c];
@@ -330,10 +332,10 @@ public:
         //		for (unsigned s = 0; s < d; s += 1) {
         //			for (unsigned r = 0; r < h; r += 2) {
         //				for (unsigned c = 0; c < w; c += 2) {
-        //					//int iLabel = *reinterpret_cast<int*>(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c));
+        //					//int iLabel = *reinterpret_cast<int*>(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c));
         //					int iLabel = img_labels_row[c + r * w + s * h * w];
         //					if (iLabel > 0) {
-        //						iLabel = LabelsSolver::GetLabel(iLabel);
+        //						iLabel = ET.GetLabel(iLabel);
         //
         //						if (img_row[c + r * w + s * h * w] > 0)
         //							img_labels_row[c + r * w + s * h * w] = iLabel;
@@ -361,33 +363,33 @@ public:
         //								img_labels_row[(c + 1) + (r + 1) * w + s * h * w] = 0;
         //						}
         //
-        //					//	std::cout << "\nimg step p0: " << img_.step.p[0] << "img step p1: " << img_.step.p[1] << "img step p2: " << img_.step.p[2];
+        //					//	std::cout << "\nimg step p0: " << this->img_.step.p[0] << "img step p1: " << this->img_.step.p[1] << "img step p2: " << this->img_.step.p[2];
         //					//	std::cout << "\nd: " << d << " h: " << h << " w: " << w;
         ///*
-        //						if (*(img_row + (img_.step.p[0] * s) + (img_.step.p[1] * r) + (img_.step.p[2] * c)) > 0)
-        //							*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c)) = iLabel;
+        //						if (*(img_row + (this->img_.step.p[0] * s) + (this->img_.step.p[1] * r) + (this->img_.step.p[2] * c)) > 0)
+        //							*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c)) = iLabel;
         //						else 
-        //							*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c)) = 0;
+        //							*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c)) = 0;
         //
-        //						if (*(img_row + (img_.step.p[0] * s) + (img_.step.p[1] * r) + (img_.step.p[2] * c + 1)) > 0)
-        //							*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c + 1)) = iLabel;
-        //						if (*(img_row + (img_.step.p[0] * s) + (img_.step.p[1] * r + 1) + (img_.step.p[2] * c)) > 0)
-        //							*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c)) = iLabel;
-        //						if (*(img_row + (img_.step.p[0] * s) + (img_.step.p[1] * r + 1) + (img_.step.p[2] * c + 1)) > 0)
-        //							*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c + 1)) = iLabel;
+        //						if (*(img_row + (this->img_.step.p[0] * s) + (this->img_.step.p[1] * r) + (this->img_.step.p[2] * c + 1)) > 0)
+        //							*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c + 1)) = iLabel;
+        //						if (*(img_row + (this->img_.step.p[0] * s) + (this->img_.step.p[1] * r + 1) + (this->img_.step.p[2] * c)) > 0)
+        //							*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c)) = iLabel;
+        //						if (*(img_row + (this->img_.step.p[0] * s) + (this->img_.step.p[1] * r + 1) + (this->img_.step.p[2] * c + 1)) > 0)
+        //							*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c + 1)) = iLabel;
         //*/
         //
-        //						//if (*(img_row + (img_.step.p[0] * s + 1) + (img_.step.p[1] * r) + (img_.step.p[2] * c)) > 0)
-        //						//	*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c)) = iLabel;
-        //						//if (*(img_row + (img_.step.p[0] * s + 1) + (img_.step.p[1] * r) + (img_.step.p[2] * c + 1)) > 0)
-        //						//	*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c + 1)) = iLabel;
-        //						//if (*(img_row + (img_.step.p[0] * s + 1) + (img_.step.p[1] * r + 1) + (img_.step.p[2] * c)) > 0)
-        //						//	*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c)) = iLabel;
-        //						//if (*(img_row + (img_.step.p[0] * s + 1) + (img_.step.p[1] * r + 1) + (img_.step.p[2] * c + 1)) > 0)
-        //						//	*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c + 1)) = iLabel;
+        //						//if (*(img_row + (this->img_.step.p[0] * s + 1) + (this->img_.step.p[1] * r) + (this->img_.step.p[2] * c)) > 0)
+        //						//	*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c)) = iLabel;
+        //						//if (*(img_row + (this->img_.step.p[0] * s + 1) + (this->img_.step.p[1] * r) + (this->img_.step.p[2] * c + 1)) > 0)
+        //						//	*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c + 1)) = iLabel;
+        //						//if (*(img_row + (this->img_.step.p[0] * s + 1) + (this->img_.step.p[1] * r + 1) + (this->img_.step.p[2] * c)) > 0)
+        //						//	*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c)) = iLabel;
+        //						//if (*(img_row + (this->img_.step.p[0] * s + 1) + (this->img_.step.p[1] * r + 1) + (this->img_.step.p[2] * c + 1)) > 0)
+        //						//	*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c + 1)) = iLabel;
         //					}
         //					else {
-        //						//*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c)) = 0;
+        //						//*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c)) = 0;
         //						if (c < w - 1) 
         //							img_labels_row[(c + 1) + r * w + s * h * w] = 0;
         //						if (r < h - 1) 
@@ -395,15 +397,15 @@ public:
         //						if (c < w - 1 && r < h - 1) 
         //							img_labels_row[(c + 1) + (r + 1) * w + s * h * w] = 0;
         //					/*
-        //						*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c + 1)) = 0;
-        //						*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c)) = 0;
-        //						*(img_labels_row + (img_labels_.step.p[0] * s) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c + 1)) = 0;
+        //						*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c + 1)) = 0;
+        //						*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c)) = 0;
+        //						*(img_labels_row + (this->img_labels_.step.p[0] * s) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c + 1)) = 0;
         //					*/
         //
-        //						//*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c)) = 0;
-        //						//*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r) + (img_labels_.step.p[2] * c + 1)) = 0;
-        //						//*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c)) = 0;
-        //						//*(img_labels_row + (img_labels_.step.p[0] * s + 1) + (img_labels_.step.p[1] * r + 1) + (img_labels_.step.p[2] * c + 1)) = 0;
+        //						//*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c)) = 0;
+        //						//*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r) + (this->img_labels_.step.p[2] * c + 1)) = 0;
+        //						//*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c)) = 0;
+        //						//*(img_labels_row + (this->img_labels_.step.p[0] * s + 1) + (this->img_labels_.step.p[1] * r + 1) + (this->img_labels_.step.p[2] * c + 1)) = 0;
         //					}
         //				}
         //			}
@@ -419,16 +421,16 @@ public:
             int r = 0;
             for (; r < e_rows; r += 2) {
                 // Get rows pointer
-                const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
-                const unsigned char* const img_row_fol = (unsigned char*)(((char*)img_row) + img_.step.p[1]);
+                const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
+                const unsigned char* const img_row_fol = (unsigned char*)(((char*)img_row) + this->img_.step.p[1]);
 
-                unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
-                unsigned* const img_labels_row_fol = (unsigned*)(((char*)img_labels_row) + img_labels_.step.p[1]);
+                unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
+                unsigned* const img_labels_row_fol = (unsigned*)(((char*)img_labels_row) + this->img_labels_.step.p[1]);
                 int c = 0;
                 for (; c < e_cols; c += 2) {
                     int iLabel = img_labels_row[c];
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
+                        iLabel = ET.GetLabel(iLabel);
                         if (img_row[c] > 0)
                             img_labels_row[c] = iLabel;
                         else
@@ -457,7 +459,7 @@ public:
                 if (o_cols) {
                     int iLabel = img_labels_row[c];
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
+                        iLabel = ET.GetLabel(iLabel);
                         if (img_row[c] > 0)
                             img_labels_row[c] = iLabel;
                         else
@@ -476,13 +478,13 @@ public:
             // Last row if the number of rows is odd
             if (o_rows) {
                 // Get rows pointer
-                const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
-                unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
+                const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
+                unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
                 int c = 0;
                 for (; c < e_cols; c += 2) {
                     int iLabel = img_labels_row[c];
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
+                        iLabel = ET.GetLabel(iLabel);
                         if (img_row[c] > 0)
                             img_labels_row[c] = iLabel;
                         else
@@ -501,7 +503,7 @@ public:
                 if (o_cols) {
                     int iLabel = img_labels_row[c];
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
+                        iLabel = ET.GetLabel(iLabel);
                         if (img_row[c] > 0)
                             img_labels_row[c] = iLabel;
                         else
@@ -513,27 +515,35 @@ public:
                 }
             }
         }
-        LabelsSolver::Dealloc(); // Memory deallocation of the labels solver
-
     }
 
     void PerformLabelingWithSteps() {
-        double alloc_timing = Alloc();
+	double alloc_timing = Alloc();
+	
+	int32_t depth = this->img_.size.p[0];
+	int32_t height = this->img_.size.p[1];
+	int32_t width = this->img_.size.p[2];
+	int32_t size = depth * height * width;
+	
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed, this->samplers, size);
 
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+				
+	SecondScan(elapsed);
 
-        perf_.start();
-        Dealloc();
-        perf_.stop();
-        perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
+	MEASURE_STEP_TIME(calc_features3d_post<ConfFeatures>(this->img_labels_, this->n_labels_, this->features),
+			  StepType::FEATURES, this->perf_, elapsed, this->samplers, size);
+	
+	this->perf_.start();
+	Dealloc();
+	this->perf_.stop();
+	this->perf_.store(Step(StepType::ALLOC_DEALLOC), this->perf_.last() + alloc_timing);
+	
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
 
     void PerformLabelingMem(std::vector<uint64_t>& accesses) {
@@ -599,17 +609,17 @@ public:
 #include "labeling3D_EPDT_26c_action_def_mem.inc.h"
         }
 
-        LabelsSolver::MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
+        ET.MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
 
-        MemVol<unsigned char> img(img_);
-        MemVol<int> img_labels(img_.size.p);
+        MemVol<unsigned char> img(this->img_);
+        MemVol<int> img_labels(this->img_.size.p);
 
-        LabelsSolver::MemSetup();
+        ET.MemSetup();
 
         // First scan
-        unsigned int d = img_.size.p[0];
-        unsigned int h = img_.size.p[1];
-        unsigned int w = img_.size.p[2];
+        unsigned int d = this->img_.size.p[0];
+        unsigned int h = this->img_.size.p[1];
+        unsigned int w = this->img_.size.p[2];
 
         for (unsigned int s = 0; s < d; s += 1) {
             for (unsigned int r = 0; r < h; r += 2) {
@@ -623,7 +633,7 @@ public:
         } // Planes cycle end
 //
         // Second scan
-        LabelsSolver::MemFlatten();
+        ET.MemFlatten();
 
         int e_rows = h & 0xfffffffe;
         bool o_rows = h % 2 == 1;
@@ -637,7 +647,7 @@ public:
                 for (; c < e_cols; c += 2) {
                     int iLabel = img_labels(s, r, c);
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::MemGetLabel(iLabel);
+                        iLabel = ET.MemGetLabel(iLabel);
                         if (img(s, r, c) > 0)
                             img_labels(s, r, c) = iLabel;
                         else
@@ -666,7 +676,7 @@ public:
                 if (o_cols) {
                     int iLabel = img_labels(s, r, c);
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::MemGetLabel(iLabel);
+                        iLabel = ET.MemGetLabel(iLabel);
                         if (img(s, r, c) > 0)
                             img_labels(s, r, c) = iLabel;
                         else
@@ -688,7 +698,7 @@ public:
                 for (; c < e_cols; c += 2) {
                     int iLabel = img_labels(s, r, c);
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::MemGetLabel(iLabel);
+                        iLabel = ET.MemGetLabel(iLabel);
                         if (img(s, r, c) > 0)
                             img_labels(s, r, c) = iLabel;
                         else
@@ -707,7 +717,7 @@ public:
                 if (o_cols) {
                     int iLabel = img_labels(s, r, c);
                     if (iLabel > 0) {
-                        iLabel = LabelsSolver::MemGetLabel(iLabel);
+                        iLabel = ET.MemGetLabel(iLabel);
                         if (img(s, r, c) > 0)
                             img_labels(s, r, c) = iLabel;
                         else
@@ -725,11 +735,11 @@ public:
 
         accesses[MD_BINARY_MAT] = (unsigned long)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (unsigned long)img_labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (unsigned long)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (unsigned long)ET.MemTotalAccesses();
 
-        img_labels_ = img_labels.GetImage();
+        this->img_labels_ = img_labels.GetImage();
 
-        LabelsSolver::MemDealloc(); // Memory deallocation of the labels solver
+        ET.MemDealloc(); // Memory deallocation of the labels solver
 
         {
 #undef CONDITION_KD
@@ -801,54 +811,60 @@ private:
     double Alloc()
     {
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_26_CONNECTIVITY, this->perf_);
+	this->samplers.Reset();
+	
         // Memory allocation for the output image
-        perf_.start();
-        img_labels_.create(3, img_.size.p, CV_32SC1);
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double t = perf_.last();
-        perf_.start();
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double ma_t = t - perf_.last();
+        this->perf_.start();
+        this->img_labels_.create(3, this->img_.size.p);
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+	this->features.template Alloc<ConfFeatures>(UPPER_BOUND_26_CONNECTIVITY);
+        this->perf_.stop();
+	
+        double t = this->perf_.last();
+        this->perf_.start();
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+	this->features.template Touch<ConfFeatures>();
+        this->perf_.stop();
+	
+        double ma_t = t - this->perf_.last();
         // Return total time
         return ls_t + ma_t;
     }
     void Dealloc() {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan() {
-        LabelsSolver::Setup(); // Labels solver initialization
+        ET.Setup(); // Labels solver initialization
 
-        unsigned int d = img_.size.p[0];
-        unsigned int h = img_.size.p[1];
-        unsigned int w = img_.size.p[2];
+        unsigned int d = this->img_.size.p[0];
+        unsigned int h = this->img_.size.p[1];
+        unsigned int w = this->img_.size.p[2];
 
 
         for (unsigned int s = 0; s < d; s += 1) {
             for (unsigned int r = 0; r < h; r += 2) {
-                const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+                const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
                 // T, W slice
-                const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * -1);
-                const unsigned char* const img_slice00_row01 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * 1);
+                const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * -1);
+                const unsigned char* const img_slice00_row01 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * 1);
 
                 // K, N, Q slice
-                const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-                const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-                const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-                const unsigned char* const img_slice11_row02 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
+                const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+                const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+                const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+                const unsigned char* const img_slice11_row02 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
 
 
-                unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
+                unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
                 // T, W slice
-                unsigned* const img_labels_slice00_row12 = (unsigned*)(((char*)img_labels_slice00_row00) + img_labels_.step.p[1] * -2);
+                unsigned* const img_labels_slice00_row12 = (unsigned*)(((char*)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -2);
 
                 // K, N, Q slice
-                unsigned* const img_labels_slice11_row12 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -2);
-                unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-                unsigned* const img_labels_slice11_row02 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 2);
+                unsigned* const img_labels_slice11_row12 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -2);
+                unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+                unsigned* const img_labels_slice11_row02 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 2);
 
                 for (unsigned int c = 0; c < w; c += 2) {
                     if (!((CONDITION_XA) || (CONDITION_XB) || (CONDITION_XC) || (CONDITION_XD))) {
@@ -860,15 +876,17 @@ private:
         } // Planes cycle end
     }
 
-    void SecondScan() {
-        unsigned int d = img_.size.p[0];
-        unsigned int h = img_.size.p[1];
-        unsigned int w = img_.size.p[2];
+    void SecondScan(Labeling::StepsDuration& elapsed) {
+        unsigned int d = this->img_.size.p[0];
+        unsigned int h = this->img_.size.p[1];
+        unsigned int w = this->img_.size.p[2];
+	unsigned int size = d * h * w;
 
-        LabelsSolver::Flatten();
+	MEASURE_STEP_TIME(this->n_labels_ = ET.Flatten(),
+			  StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
 
-        //const unsigned char* const img_row = img_.ptr<unsigned char>();
-        //int* const img_labels_row = img_labels_.ptr<int>();
+        //const unsigned char* const img_row = this->img_.template ptr<unsigned char>();
+        //int* const img_labels_row = this->img_labels_.template ptr<int>();
 
         // NEW VERSION BELOW, OLD IN PerformLabeling
         int e_rows = h & 0xfffffffe;
@@ -876,104 +894,106 @@ private:
         int e_cols = w & 0xfffffffe;
         bool o_cols = w % 2 == 1;
 
-        for (unsigned s = 0; s < d; s++) {
-            int r = 0;
-            for (; r < e_rows; r += 2) {
-                // Get rows pointer
-                const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
-                const unsigned char* const img_row_fol = (unsigned char*)(((char*)img_row) + img_.step.p[1]);
+	MEASURE_STEP_TIME(
 
-                unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
-                unsigned* const img_labels_row_fol = (unsigned*)(((char*)img_labels_row) + img_labels_.step.p[1]);
-                int c = 0;
-                for (; c < e_cols; c += 2) {
-                    int iLabel = img_labels_row[c];
-                    if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
-                        if (img_row[c] > 0)
-                            img_labels_row[c] = iLabel;
-                        else
-                            img_labels_row[c] = 0;
-                        if (img_row[c + 1] > 0)
-                            img_labels_row[c + 1] = iLabel;
-                        else
-                            img_labels_row[c + 1] = 0;
-                        if (img_row_fol[c] > 0)
-                            img_labels_row_fol[c] = iLabel;
-                        else
-                            img_labels_row_fol[c] = 0;
-                        if (img_row_fol[c + 1] > 0)
-                            img_labels_row_fol[c + 1] = iLabel;
-                        else
-                            img_labels_row_fol[c + 1] = 0;
-                    }
-                    else {
-                        img_labels_row[c] = 0;
-                        img_labels_row[c + 1] = 0;
-                        img_labels_row_fol[c] = 0;
-                        img_labels_row_fol[c + 1] = 0;
-                    }
-                }
-                // Last column if the number of columns is odd
-                if (o_cols) {
-                    int iLabel = img_labels_row[c];
-                    if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
-                        if (img_row[c] > 0)
-                            img_labels_row[c] = iLabel;
-                        else
-                            img_labels_row[c] = 0;
-                        if (img_row_fol[c] > 0)
-                            img_labels_row_fol[c] = iLabel;
-                        else
-                            img_labels_row_fol[c] = 0;
-                    }
-                    else {
-                        img_labels_row[c] = 0;
-                        img_labels_row_fol[c] = 0;
-                    }
-                }
-            }
-            // Last row if the number of rows is odd
-            if (o_rows) {
-                // Get rows pointer
-                const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
-                unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
-                int c = 0;
-                for (; c < e_cols; c += 2) {
-                    int iLabel = img_labels_row[c];
-                    if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
-                        if (img_row[c] > 0)
-                            img_labels_row[c] = iLabel;
-                        else
-                            img_labels_row[c] = 0;
-                        if (img_row[c + 1] > 0)
-                            img_labels_row[c + 1] = iLabel;
-                        else
-                            img_labels_row[c + 1] = 0;
-                    }
-                    else {
-                        img_labels_row[c] = 0;
-                        img_labels_row[c + 1] = 0;
-                    }
-                }
-                // Last column if the number of columns is odd
-                if (o_cols) {
-                    int iLabel = img_labels_row[c];
-                    if (iLabel > 0) {
-                        iLabel = LabelsSolver::GetLabel(iLabel);
-                        if (img_row[c] > 0)
-                            img_labels_row[c] = iLabel;
-                        else
-                            img_labels_row[c] = 0;
-                    }
-                    else {
-                        img_labels_row[c] = 0;
-                    }
-                }
-            }
-        }
+	    for (unsigned s = 0; s < d; s++) {
+		int r = 0;
+		for (; r < e_rows; r += 2) {
+		    // Get rows pointer
+		    const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
+		    const unsigned char* const img_row_fol = (unsigned char*)(((char*)img_row) + this->img_.step.p[1]);
+
+		    unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
+		    unsigned* const img_labels_row_fol = (unsigned*)(((char*)img_labels_row) + this->img_labels_.step.p[1]);
+		    int c = 0;
+		    for (; c < e_cols; c += 2) {
+			int iLabel = img_labels_row[c];
+			if (iLabel > 0) {
+			    iLabel = ET.GetLabel(iLabel);
+			    if (img_row[c] > 0)
+				img_labels_row[c] = iLabel;
+			    else
+				img_labels_row[c] = 0;
+			    if (img_row[c + 1] > 0)
+				img_labels_row[c + 1] = iLabel;
+			    else
+				img_labels_row[c + 1] = 0;
+			    if (img_row_fol[c] > 0)
+				img_labels_row_fol[c] = iLabel;
+			    else
+				img_labels_row_fol[c] = 0;
+			    if (img_row_fol[c + 1] > 0)
+				img_labels_row_fol[c + 1] = iLabel;
+			    else
+				img_labels_row_fol[c + 1] = 0;
+			}
+			else {
+			    img_labels_row[c] = 0;
+			    img_labels_row[c + 1] = 0;
+			    img_labels_row_fol[c] = 0;
+			    img_labels_row_fol[c + 1] = 0;
+			}
+		    }
+		    // Last column if the number of columns is odd
+		    if (o_cols) {
+			int iLabel = img_labels_row[c];
+			if (iLabel > 0) {
+			    iLabel = ET.GetLabel(iLabel);
+			    if (img_row[c] > 0)
+				img_labels_row[c] = iLabel;
+			    else
+				img_labels_row[c] = 0;
+			    if (img_row_fol[c] > 0)
+				img_labels_row_fol[c] = iLabel;
+			    else
+				img_labels_row_fol[c] = 0;
+			}
+			else {
+			    img_labels_row[c] = 0;
+			    img_labels_row_fol[c] = 0;
+			}
+		    }
+		}
+		// Last row if the number of rows is odd
+		if (o_rows) {
+		    // Get rows pointer
+		    const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
+		    unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
+		    int c = 0;
+		    for (; c < e_cols; c += 2) {
+			int iLabel = img_labels_row[c];
+			if (iLabel > 0) {
+			    iLabel = ET.GetLabel(iLabel);
+			    if (img_row[c] > 0)
+				img_labels_row[c] = iLabel;
+			    else
+				img_labels_row[c] = 0;
+			    if (img_row[c + 1] > 0)
+				img_labels_row[c + 1] = iLabel;
+			    else
+				img_labels_row[c + 1] = 0;
+			}
+			else {
+			    img_labels_row[c] = 0;
+			    img_labels_row[c + 1] = 0;
+			}
+		    }
+		    // Last column if the number of columns is odd
+		    if (o_cols) {
+			int iLabel = img_labels_row[c];
+			if (iLabel > 0) {
+			    iLabel = ET.GetLabel(iLabel);
+			    if (img_row[c] > 0)
+				img_labels_row[c] = iLabel;
+			    else
+				img_labels_row[c] = 0;
+			}
+			else {
+			    img_labels_row[c] = 0;
+			}
+		    }
+		}
+	    }, StepType::RELABELING, this->perf_, elapsed, this->samplers, size);
     }
 };
 

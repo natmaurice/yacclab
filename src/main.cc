@@ -26,10 +26,16 @@
 #include "utilities.h"
 #include "yacclab_tests.h"
 
+#include <lsl3dlib/papi_helper.hpp>
+#include <lsl3dlib/perf-helper.hpp>
 
-using namespace std;
+#include <omp.h>
+
 using namespace cv;
 using namespace ::filesystem;
+
+using string = std::string;
+using error_code = std::error_code;
 
 int main()
 {
@@ -38,10 +44,11 @@ int main()
     redirectError(RedirectCvError);
 #else
     cvRedirectError(RedirectCvError);
+    cvRedirectError(RedirectCvError);
 #endif
-
+    
     // Hide cursor from console
-    HideConsoleCursor();
+    //HideConsoleCursor();
 
     // To handle filesystem errors
     error_code ec;
@@ -49,7 +56,7 @@ int main()
     // Create StreamDemultiplexer object in order
     // to print output on both stdout and log file
     string logfile = "log.txt";
-    ofstream os(logfile);
+    std::ofstream os(logfile);
     if (os.is_open()) {
         dmux::cout.AddStream(os);
     }
@@ -81,34 +88,40 @@ int main()
     // Release FileStorage
     fs.release();
 
+
+#if YACCLAB_USE_PAPI
+    papih_init();
+    papih_configure();
+#endif // YACCLAB_USE_PAPI
+
+#if YACCLAB_USE_PERF
+    perf_helper_create();
+#endif // YACCLAB_USE_PERF
+    
     /*************************************************************************/
     /*  Configuration parameters check                                       */
     /*************************************************************************/
 
 
-	for (auto &mode_cfg : cfg.mode_config_vector) {
+    for (auto &mode_cfg : cfg.mode_config_vector) {
 
-		YacclabTests test_perf = YacclabTests(mode_cfg, cfg.global_config, ec);
+	YacclabTests test_perf = YacclabTests(mode_cfg, cfg.global_config, ec);
 
         test_perf.InitialOperations();
 
-		// Correctness test
-		if (mode_cfg.perform_correctness) {
-			if (mode_cfg.perform_check_8connectivity_std) {
-				test_perf.CheckPerformLabeling();
-			}
+	// Correctness test
+	if (mode_cfg.perform_correctness) {
+	    if (mode_cfg.perform_check_8connectivity_std) {
+		test_perf.CheckPerformLabeling();
+	    }
 
-			if (mode_cfg.perform_check_8connectivity_ws) {
-				test_perf.CheckPerformLabelingWithSteps();
-			}
+	    if (mode_cfg.perform_check_8connectivity_ws) {
+		test_perf.CheckPerformLabelingWithSteps();
+	    }
 
 			if (mode_cfg.perform_check_8connectivity_mem) {
 				test_perf.CheckPerformLabelingMem();
 			}
-
-            if (mode_cfg.perform_check_8connectivity_bs) {
-                test_perf.CheckPerformLabelingBlocksize();
-            }
 		}
 
 		// Average test
@@ -130,17 +143,19 @@ int main()
 		if (mode_cfg.perform_granularity) {
 			test_perf.GranularityTest();
 		}
-
 		// Memory test
 		if (mode_cfg.perform_memory) {
 			test_perf.MemoryTest();
 		}
 
-        // Block size grid search
-        if (mode_cfg.perform_blocksize) {
-            test_perf.BlockSizeTest();
-        }
+		if (mode_cfg.perform_parallel_average_ws) {
+		    test_perf.ParallelAverageTestWithSteps();
+		}
 
+		if (mode_cfg.perform_parallel_granularity) {
+		    test_perf.ParallelGranularityTest();
+		}
+		
         // There should be better places for this
 		//LabelingMapSingleton::GetLabeling(mode_cfg.ccl_existing_algorithms[0])->GetInput()->Release();
 
@@ -152,7 +167,20 @@ int main()
 		// Copy log file into output folder
 		dmux::cout.flush();
 		copy(path(logfile), cfg.global_config.glob_output_path / mode_cfg.mode_output_path / path(logfile), ec);
+	    if (mode_cfg.perform_check_8connectivity_mem) {
+		test_perf.CheckPerformLabelingMem();
+	    }
 	}
 
+    ShowConsoleCursor();
+
+#if YACCLAB_USE_PAPI
+    papih_exit();
+#endif // YACCLAB_USE_PAPI
+
+#if YACCLAB_USE_PERF
+    perf_helper_destroy();
+#endif // YACCLAB_USE_PERF
+    
     return EXIT_SUCCESS;
 }

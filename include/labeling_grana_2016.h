@@ -17,6 +17,8 @@
 
 template <typename LabelsSolver>
 class PRED : public Labeling2D<Connectivity2D::CONN_8> {
+protected:
+    LabelsSolver ET;
 public:
     PRED() {}
 
@@ -24,8 +26,8 @@ public:
     {
         img_labels_ = cv::Mat1i(img_.size(), 0); // Call to memset
 
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Alloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.Setup();
 
         // Rosenfeld Mask
         // +-+-+-+
@@ -44,13 +46,13 @@ public:
 #define CONDITION_R img_row_prev[c+1]>0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels_row[c] = LabelsSolver::NewLabel(); // new label
+#define ACTION_2 img_labels_row[c] = ET.NewLabel(); // new label
 #define ACTION_3 img_labels_row[c] = img_labels_row_prev[c - 1]; // x <- p
 #define ACTION_4 img_labels_row[c] = img_labels_row_prev[c]; // x <- q
 #define ACTION_5 img_labels_row[c] = img_labels_row_prev[c + 1]; // x <- r
 #define ACTION_6 img_labels_row[c] = img_labels_row[c - 1]; // x <- s
-#define ACTION_7 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
-#define ACTION_8 img_labels_row[c] = LabelsSolver::Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
+#define ACTION_7 img_labels_row[c] = ET.Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
+#define ACTION_8 img_labels_row[c] = ET.Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
 
 #define COLS w
 
@@ -89,48 +91,54 @@ public:
 #undef CONDITION_R
 
     // Second scan
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
             unsigned int *b = img_labels_.ptr<unsigned int>(r_i);
             unsigned int *e = b + img_labels_.cols;
             for (; b != e; ++b) {
-                *b = LabelsSolver::GetLabel(*b);
+                *b = ET.GetLabel(*b);
             }
         }
 
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
     }
+
 
     void PerformLabelingWithSteps()
     {
-        double alloc_timing = Alloc();
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+	
+	double alloc_timing = Alloc();
 
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed,
+			  this->samplers, size);
+
+        SecondScan(elapsed);
 
         perf_.start();
         Dealloc();
         perf_.stop();
         perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
 
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
-
+    
     void PerformLabelingMem(std::vector<uint64_t>& accesses)
     {
 
         MemMat<unsigned char> img(img_);
         MemMat<int> img_labels(img_.size(), 0); 
 
-        LabelsSolver::MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::MemSetup();
+        ET.MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.MemSetup();
 
         // First scan
         int w(img_.cols);
@@ -142,13 +150,13 @@ public:
 #define CONDITION_R img(r-1,c+1)>0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels(r,c) = LabelsSolver::MemNewLabel(); // new label
+#define ACTION_2 img_labels(r,c) = ET.MemNewLabel(); // new label
 #define ACTION_3 img_labels(r,c) = img_labels(r - 1, c - 1); // x <- p
 #define ACTION_4 img_labels(r,c) = img_labels(r - 1, c); // x <- q
 #define ACTION_5 img_labels(r,c) = img_labels(r - 1, c + 1); // x <- r
 #define ACTION_6 img_labels(r,c) = img_labels(r, c - 1); // x <- s
-#define ACTION_7 img_labels(r,c) = LabelsSolver::MemMerge(img_labels(r - 1, c - 1), img_labels(r - 1, c + 1)); // x <- p + r
-#define ACTION_8 img_labels(r,c) = LabelsSolver::MemMerge(img_labels(r, c - 1), img_labels(r - 1, c + 1)); // x <- s + r
+#define ACTION_7 img_labels(r,c) = ET.MemMerge(img_labels(r - 1, c - 1), img_labels(r - 1, c + 1)); // x <- p + r
+#define ACTION_8 img_labels(r,c) = ET.MemMerge(img_labels(r, c - 1), img_labels(r - 1, c + 1)); // x <- s + r
 
 #define COLS w
 
@@ -178,12 +186,12 @@ public:
 #undef CONDITION_Q
 #undef CONDITION_R
 
-        n_labels_ = LabelsSolver::MemFlatten();
+        n_labels_ = ET.MemFlatten();
 
         // Second scan
         for (int r_i = 0; r_i < img_labels.rows; ++r_i) {
             for (int c_i = 0; c_i < img_labels.cols; ++c_i) {
-                img_labels(r_i, c_i) = LabelsSolver::MemGetLabel(img_labels(r_i, c_i));
+                img_labels(r_i, c_i) = ET.MemGetLabel(img_labels(r_i, c_i));
             }
         }
 
@@ -192,18 +200,20 @@ public:
 
         accesses[MD_BINARY_MAT] = (uint64_t)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (uint64_t)img_labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)ET.MemTotalAccesses();
 
         img_labels_ = img_labels.GetImage(); 
 
-        LabelsSolver::MemDealloc();
+        ET.MemDealloc();
     }
 
 private:
     double Alloc()
     {
+	this->samplers.Reset();
+
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
         // Memory allocation for the output image
         perf_.start();
         img_labels_ = cv::Mat1i(img_.size());
@@ -220,13 +230,13 @@ private:
 
     void Dealloc()
     {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan()
     {
         memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart); // Initialization
-        LabelsSolver::Setup();
+        ET.Setup();
 
         // First Scan
         int w(img_.cols);
@@ -238,13 +248,13 @@ private:
 #define CONDITION_R img_row_prev[c+1]>0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels_row[c] = LabelsSolver::NewLabel(); // new label
+#define ACTION_2 img_labels_row[c] = ET.NewLabel(); // new label
 #define ACTION_3 img_labels_row[c] = img_labels_row_prev[c - 1]; // x <- p
 #define ACTION_4 img_labels_row[c] = img_labels_row_prev[c]; // x <- q
 #define ACTION_5 img_labels_row[c] = img_labels_row_prev[c + 1]; // x <- r
 #define ACTION_6 img_labels_row[c] = img_labels_row[c - 1]; // x <- s
-#define ACTION_7 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
-#define ACTION_8 img_labels_row[c] = LabelsSolver::Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
+#define ACTION_7 img_labels_row[c] = ET.Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
+#define ACTION_8 img_labels_row[c] = ET.Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
 
 #define COLS w
 
@@ -282,18 +292,25 @@ private:
 #undef CONDITION_Q
 #undef CONDITION_R
     }
-    void SecondScan()
+    void SecondScan(Labeling::StepsDuration& elapsed)
     {
-        // Second scan
-        n_labels_ = LabelsSolver::Flatten();
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
 
-        for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
-            unsigned int *b = img_labels_.ptr<unsigned int>(r_i);
-            unsigned int *e = b + img_labels_.cols;
-            for (; b != e; ++b) {
-                *b = LabelsSolver::GetLabel(*b);
-            }
-        }
+	// Second scan
+	MEASURE_STEP_TIME(
+	    this->n_labels_ = ET.Flatten(),
+	    StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
+
+	MEASURE_STEP_TIME(
+	    for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
+		unsigned int *b = img_labels_.ptr<unsigned int>(r_i);
+		unsigned int *e = b + img_labels_.cols;
+		for (; b != e; ++b) {
+		    *b = ET.GetLabel(*b);
+		}
+	    }, StepType::RELABELING, this->perf_, elapsed, this->samplers, size);
     }
 };
 

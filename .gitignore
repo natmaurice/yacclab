@@ -16,5 +16,12 @@
 /CMakeFiles
 
 **/*.jpg 
+**/#*#
+
 
 /MSVC*
+
+*~
+
+results/
+python/__pycache__/

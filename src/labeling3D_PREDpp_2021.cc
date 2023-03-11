@@ -6,4 +6,13 @@
 
 #include "labeling3D_PREDpp_2021.h"
 
+template <typename LabelsSolver>
+using PREDpp_3D_CCA = PREDpp_3D<LabelsSolver, true, ConfFeatures3DAll>;
+
+template <typename LabelsSolver>
+using PREDpp_3D_CCA_only = PREDpp_3D<LabelsSolver, false, ConfFeatures3DAll>;
+
+
 REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(PREDpp_3D);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(PREDpp_3D_CCA);
+REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(PREDpp_3D_CCA_only);

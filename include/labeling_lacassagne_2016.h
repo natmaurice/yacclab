@@ -28,6 +28,8 @@ struct Table2D {
     ~Table2D() { Release(); }
 
     void Reserve(size_t rows, size_t cols) {
+	Release();
+	
         prows = new unsigned*[rows];
         *prows = new unsigned[rows*cols];
         unsigned *currow = *prows;

@@ -4,7 +4,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.13)
 
 # ----------------------------------------------------------------------------
 #  Base variables
@@ -16,6 +16,9 @@ project (${ProjectName})
 # ----------------------------------------------------------------------------
 #  YACCLAB and CMAKE variables
 # ----------------------------------------------------------------------------
+
+
+
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configs" FORCE)
 set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}" CACHE PATH "Install prefix" FORCE)
 
@@ -61,9 +64,10 @@ message(STATUS "Compiler ID: ${CMAKE_CXX_COMPILER_ID}")
 
 # The following commands would serve to simplify the check on the compiler version but do not yet seem to work perfectly
 set(CMAKE_CXX_STANDARD_REQUIRED YES) # Force the following command to generate an error when it fails
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS NO)
-   
+
+
 #if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
 #    include(CheckCXXCompilerFlag)
 #    CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
@@ -83,6 +87,11 @@ set(CMAKE_CXX_EXTENSIONS NO)
 #else()
 #	message(STATUS "We are not able to check if ${CMAKE_CXX_COMPILER} compiler has C++14 support. YACCLAB may not work properly.")
 #endif()
+
+# To be able to use __cplusplus macro to check C++ version
+if(MSVC)
+	add_compile_options("/Zc:__cplusplus")
+endif()
 
 # ----------------------------------------------------------------------------
 #  Check for CUDA support
@@ -104,9 +113,7 @@ if(YACCLAB_ENABLE_CUDA)
 		string(STRIP "${INSTALLED_GPU_CCS_1}" INSTALLED_GPU_CCS_2)
 		string(REPLACE " " ";" INSTALLED_GPU_CCS_3 "${INSTALLED_GPU_CCS_2}")
 		string(REPLACE "." "" CUDA_ARCH_LIST "${INSTALLED_GPU_CCS_3}")
-		#SET(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
-		#SET(CMAKE_CUDA_ARCHITECTURES native)
-		SET(CMAKE_CUDA_ARCHITECTURES 50)
+		SET(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
 		message(STATUS "CUDA detected architecture: ${CUDA_ARCH_LIST}")
 		
         #find_package(CUDA)
@@ -114,9 +121,7 @@ if(YACCLAB_ENABLE_CUDA)
         #message(STATUS ${ARCH_FLAGS})
         #SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} ${ARCH_FLAGS}")
         
-        # This flag causes some kernel do not run, for some unknown reason
-        #add_compile_options($<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>)
-        add_link_options($<DEVICE_LINK:-dlink>)
+        add_compile_options($<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>)
                 
 	else()
 		message(WARNING "No CUDA support")
@@ -173,17 +178,50 @@ if(MSVC)
 endif()
 
 
+
+
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_INSTALL_PREFIX}/cmake")
+
 # ----------------------------------------------------------------------------
 # OpenMP
 # ----------------------------------------------------------------------------
 
 find_package(OpenMP)
 message(STATUS "OpenMP found: ${OpenMP_CXX_FOUND}")
-#if(OpenMP_CXX_FOUND)
-#    add_compile_options("${OpenMP_CXX_FLAGS}")
-#    include_directories(${OpenMP_CXX_INCLUDE_DIRS})
-#endif()
+if(OpenMP_CXX_FOUND)
+    add_compile_options("${OpenMP_CXX_FLAGS}")
+    include_directories(${OpenMP_CXX_INCLUDE_DIRS})
+endif()
 
+
+# ----------------------------------------------------------------------------
+# PAPI
+# ----------------------------------------------------------------------------
+
+if(YACCLAB_ENABLE_PAPI)
+  add_definitions(-DYACCLAB_USE_PAPI=1)
+  add_definitions(-DCCL_ENABLE_PAPI=1)
+
+  find_package(PAPI)
+
+else()
+  add_definitions(-DYACCLAB_USE_PAPI=0)
+  add_definitions(-DCCL_ENABLE_PAPI=0)  
+endif()
+
+# ----------------------------------------------------------------------------
+# Perf
+# ----------------------------------------------------------------------------
+
+if (YACCLAB_USE_PERF)
+  message("Perf enabled")  
+  add_definitions(-DYACCLAB_USE_PERF=1)
+  set(LSL3DLIB_USE_PERF 1)
+else()
+  message("Perf disabled")
+  add_definitions(-DYACCLAB_USE_PERF=0)
+  add_definitions(-DLSL3DLIB_USE_PERF=0)
+endif()
 
 # ----------------------------------------------------------------------------
 # Utility
@@ -253,22 +291,34 @@ if(NOT EXISTS "${CMAKE_INSTALL_PREFIX}/config.yaml" OR YACCLAB_FORCE_CONFIG_GENE
 endif()
 
 add_executable(${ProjectName} "${CMAKE_INSTALL_PREFIX}/config.yaml")
+#add_executable(YACCLAB)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${ProjectName}) # Set YACCLAB as startup group instead of ALL_BUILD
-target_link_libraries (${ProjectName}  ${OpenCV_LIBS})
+
+
+#add_subdirectory(lip6)
+#include_directories("${CMAKE_CURRENT_SOURCE_DIR}/lip6/src")
+#include_directories("${CMAKE_CURRENT_SOURCE_DIR}/lip6/simdhelpers/include")
+#include_directories("${CMAKE_CURRENT_SOURCE_DIR}/lib/nrc2/include")
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/nrc2)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/lsl3dlib)
+
+target_link_libraries (${ProjectName} PRIVATE ${OpenCV_LIBS})
 if(OpenMP_CXX_FOUND)
-    target_link_libraries(${ProjectName} OpenMP::OpenMP_CXX)
+  target_link_libraries(${ProjectName} PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-# To be able to use __cplusplus macro to check C++ version
-if(MSVC)
-	target_compile_options(${ProjectName} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
-    #target_compile_options(${ProjectName} PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:__cplusplus>)
+  
+target_link_libraries(${ProjectName} PRIVATE nrc-slib)
+target_link_libraries(${ProjectName} PRIVATE lsl3d-slib)
+
+if (YACCLAB_ENABLE_PAPI)
+  target_link_libraries(${ProjectName} PRIVATE ${PAPI_LIBRARIES})
 endif()
 
-set_property(TARGET ${ProjectName} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 # ----------------------------------------------------------------------------
-# Output and datasets
+# Output and datasests
 # ----------------------------------------------------------------------------
 
 # Set YACCLAB as startup group instead of ALL_BUILD
@@ -276,13 +326,15 @@ set_property(TARGET ${ProjectName} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 #target_link_libraries (${ProjectName} ${OpenCV_LIBS})
 
+
 add_subdirectory(src)
 add_subdirectory(include)
+
+
 if(YACCLAB_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     add_subdirectory(cuda/src)
     add_subdirectory(cuda/include)
     include_directories("${CUDA_INCLUDE_DIRS}")
-    set_property(TARGET ${ProjectName} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 source_group("Header Files" REGULAR_EXPRESSION "h$|hpp$")
@@ -358,3 +410,4 @@ if (YACCLAB_DOWNLOAD_DATASET_3D)
 		endif()
 	endif()
 endif()
+

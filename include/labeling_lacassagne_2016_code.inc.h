@@ -3,7 +3,8 @@
 //
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
+protected:
+    LabelsSolver ET;
 public:
     void PerformLabeling() {
         int rows = img_.rows;
@@ -54,14 +55,14 @@ public:
         // starting with a foreground pixel) 
         memset(ERA.prows[0], 0, rows * (cols + 1) * sizeof(unsigned));
 
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Alloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.Setup();
 
         // First row
         {
             unsigned* ERA_r = ERA.prows[0];
             for (int er = 1; er <= ner[0]; er += 2) {
-                ERA_r[er] = LabelsSolver::NewLabel();
+                ERA_r[er] = ET.NewLabel();
             }
         }
         for (int r = 1; r < rows; ++r) {
@@ -87,22 +88,22 @@ public:
                     er1--;
                 if (er1 >= er0) {
                     int ea = ERA_r_prev[er0];
-                    int a = LabelsSolver::FindRoot(ea);
+                    int a = ET.FindRoot(ea);
                     for (int erk = er0 + 2; erk <= er1; erk += 2) { // WRONG in the paper! missing "step 2"
                         int eak = ERA_r_prev[erk];
-                        int ak = LabelsSolver::FindRoot(eak);
+                        int ak = ET.FindRoot(eak);
                         // Min extraction and propagation
                         if (a < ak)
-                            LabelsSolver::UpdateTable(ak, a);
+                            ET.UpdateTable(ak, a);
                         if (a > ak) {
-                            LabelsSolver::UpdateTable(a, ak);
+                            ET.UpdateTable(a, ak);
                             a = ak;
                         }
                     }
                     ERA_r[er] = a; // The global min
                 }
                 else {
-                    ERA_r[er] = LabelsSolver::NewLabel();
+                    ERA_r[er] = ET.NewLabel();
                 }
             }
         }
@@ -117,7 +118,7 @@ public:
         // Sorry, but we really don't get why this shouldn't be included in the last step
 
         // Step 4
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         // Step 5
         img_labels_ = Mat1i(rows, cols);
@@ -130,12 +131,13 @@ public:
             for (int c = 0; c < cols; ++c)
             {
                 //labels(r, c) = A[EA(r, c)];
-                labels_r[c] = LabelsSolver::GetLabel(ERA_r[ER_r[c]]); // This is Step 3 and 5 together
+                labels_r[c] = ET.GetLabel(ERA_r[ER_r[c]]); // This is Step 3 and 5 together
             }
         }
 
         delete[] ner;
-        LabelsSolver::Dealloc();
+	ner = nullptr;
+        ET.Dealloc();
     }
 
     void PerformLabelingWithSteps()
@@ -150,7 +152,7 @@ public:
         perf_.start();
         SecondScan();
         perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+        perf_.store(Step(StepType::RELABELING), perf_.last());
 
         perf_.start();
         Dealloc();
@@ -198,13 +200,13 @@ public:
         // in order to handle special cases (e.g. lines with chessboard pattern 
         // starting with a foreground pixel) 
 
-        LabelsSolver::MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::MemSetup();
+        ET.MemAlloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.MemSetup();
 
         // First row
         {
             for (int er = 1; er <= ner[0]; er += 2) {
-                ERA(0, er) = LabelsSolver::MemNewLabel();
+                ERA(0, er) = ET.MemNewLabel();
             }
         }
         for (int r = 1; r < rows; ++r)
@@ -226,16 +228,16 @@ public:
                     er1--;
                 if (er1 >= er0) {
                     int ea = ERA(r - 1, er0);
-                    int a = LabelsSolver::MemFindRoot(ea);
+                    int a = ET.MemFindRoot(ea);
                     for (int erk = er0 + 2; erk <= er1; erk += 2) { // WRONG in the paper! missing "step 2"
                         int eak = ERA(r - 1, erk);
-                        int ak = LabelsSolver::MemFindRoot(eak);
+                        int ak = ET.MemFindRoot(eak);
                         // Min extraction and propagation
                         if (a < ak)
-                            LabelsSolver::MemUpdateTable(ak, a);
+                            ET.MemUpdateTable(ak, a);
                         if (a > ak)
                         {
-                            LabelsSolver::MemUpdateTable(a, ak);
+                            ET.MemUpdateTable(a, ak);
                             a = ak;
                         }
                     }
@@ -243,13 +245,13 @@ public:
                 }
                 else
                 {
-                    ERA(r, er) = LabelsSolver::MemNewLabel();
+                    ERA(r, er) = ET.MemNewLabel();
                 }
             }
         }
 
         // Step 4
-        n_labels_ = LabelsSolver::MemFlatten();
+        n_labels_ = ET.MemFlatten();
 
         // Step 5
         MemMat<int> labels(rows, cols);
@@ -258,7 +260,7 @@ public:
             for (int c = 0; c < cols; ++c)
             {
                 //labels(r, c) = A[EA(r, c)];
-                labels(r, c) = LabelsSolver::MemGetLabel(ERA(r, ER(r, c))); // This is Step 3 and 5 together
+                labels(r, c) = ET.MemGetLabel(ERA(r, ER(r, c))); // This is Step 3 and 5 together
             }
         }
 
@@ -267,22 +269,23 @@ public:
 
         accesses[MD_BINARY_MAT] = (uint64_t)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (uint64_t)labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)ET.MemTotalAccesses();
         accesses[MD_OTHER] = (uint64_t)(ER.GetTotalAccesses() + RLC.GetTotalAccesses() + ner.GetTotalAccesses() + ERA.GetTotalAccesses());
 
         img_labels_ = labels.GetImage();
 
-        LabelsSolver::MemDealloc();
+        ET.MemDealloc();
     }
 
 private:
-    int *ner;
+    int *ner = nullptr;
     Table2D ER, RLC, ERA;
 
-    double Alloc()
+    double Alloc()	
     {
+	Dealloc();
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
         // Memory allocation for the output image and for other structures
         perf_.start();
         img_labels_ = cv::Mat1i(img_.size());
@@ -327,11 +330,12 @@ private:
         ERA.Release();
 
         delete[] ner;
+	ner = nullptr;
         RLC.Release();
         ER.Release();
 
         // No free for img_labels_ because it is required at the end of the algorithm 
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
     }
     void FirstScan()
     {
@@ -369,7 +373,7 @@ private:
         }
 
         // Step 2
-        LabelsSolver::Setup();
+        ET.Setup();
 
         memset(ERA.prows[0], 0, rows * (cols + 1) * sizeof(unsigned));
 
@@ -377,7 +381,7 @@ private:
         {
             unsigned* ERA_r = ERA.prows[0];
             for (int er = 1; er <= ner[0]; er += 2) {
-                ERA_r[er] = LabelsSolver::NewLabel();
+                ERA_r[er] = ET.NewLabel();
             }
         }
         for (int r = 1; r < rows; ++r) {
@@ -403,22 +407,22 @@ private:
                     er1--;
                 if (er1 >= er0) {
                     int ea = ERA_r_prev[er0];
-                    int a = LabelsSolver::FindRoot(ea);
+                    int a = ET.FindRoot(ea);
                     for (int erk = er0 + 2; erk <= er1; erk += 2) { // WRONG in the paper! missing "step 2"
                         int eak = ERA_r_prev[erk];
-                        int ak = LabelsSolver::FindRoot(eak);
+                        int ak = ET.FindRoot(eak);
                         // Min extraction and propagation
                         if (a < ak)
-                            LabelsSolver::UpdateTable(ak, a);
+                            ET.UpdateTable(ak, a);
                         if (a > ak) {
-                            LabelsSolver::UpdateTable(a, ak);
+                            ET.UpdateTable(a, ak);
                             a = ak;
                         }
                     }
                     ERA_r[er] = a; // The global min
                 }
                 else {
-                    ERA_r[er] = LabelsSolver::NewLabel();
+                    ERA_r[er] = ET.NewLabel();
                 }
             }
         }
@@ -427,7 +431,7 @@ private:
     void SecondScan()
     {
         // Step 4
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         // Step 5
 
@@ -440,7 +444,7 @@ private:
             for (int c = 0; c < img_.cols; ++c)
             {
                 //labels(r, c) = A[EA(r, c)];
-                labels_r[c] = LabelsSolver::GetLabel(ERA_r[ER_r[c]]); // This is Step 3 and 5 together
+                labels_r[c] = ET.GetLabel(ERA_r[ER_r[c]]); // This is Step 3 and 5 together
             }
         }
     }

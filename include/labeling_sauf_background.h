@@ -15,6 +15,8 @@
 
 template <typename LabelsSolver>
 class SAUF_BG : public Labeling2D<Connectivity2D::CONN_8, true> {
+protected:
+    LabelsSolver ET;
 public:
     SAUF_BG() {}
 
@@ -25,8 +27,8 @@ public:
 
         img_labels_ = cv::Mat1i(img_.size()); // Allocation + initialization of the output image
 
-        LabelsSolver::Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1); // Memory allocation of the labels solver
-        LabelsSolver::Setup(); // Labels solver initialization
+        ET.Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1); // Memory allocation of the labels solver
+        ET.Setup(); // Labels solver initialization
 
         // Rosenfeld Mask
         // +-+-+-+
@@ -53,31 +55,31 @@ public:
 #define CONDITION_S_BG c > 0 && img_row[c - 1] == 0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels_row[c] = LabelsSolver::NewLabel(); // new label
+#define ACTION_2 img_labels_row[c] = ET.NewLabel(); // new label
 #define ACTION_3 img_labels_row[c] = img_labels_row_prev[c - 1]; // x <- p
 #define ACTION_4 img_labels_row[c] = img_labels_row_prev[c]; // x <- q
 #define ACTION_5 img_labels_row[c] = img_labels_row_prev[c + 1]; // x <- r
 #define ACTION_6 img_labels_row[c] = img_labels_row[c - 1]; // x <- s
-#define ACTION_7 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
-#define ACTION_8 img_labels_row[c] = LabelsSolver::Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
-#define ACTION_9 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c], img_labels_row[c - 1]); // x <- p + s
+#define ACTION_7 img_labels_row[c] = ET.Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
+#define ACTION_8 img_labels_row[c] = ET.Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
+#define ACTION_9 img_labels_row[c] = ET.Merge(img_labels_row_prev[c], img_labels_row[c - 1]); // x <- p + s
 
 #include "labeling_sauf_bg_tree.inc.h"
             }
         }
 
         // Second scan
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         for (int r = 0; r < img_labels_.rows; ++r) {
             unsigned* img_row_start = img_labels_.ptr<unsigned>(r);
             unsigned* const img_row_end = img_row_start + img_labels_.cols;
             for (; img_row_start != img_row_end; ++img_row_start) {
-                *img_row_start = LabelsSolver::GetLabel(*img_row_start);
+                *img_row_start = ET.GetLabel(*img_row_start);
             }
         }
 
-        LabelsSolver::Dealloc(); // Memory deallocation of the labels solver
+        ET.Dealloc(); // Memory deallocation of the labels solver
 
 #undef ACTION_1
 #undef ACTION_2
@@ -110,7 +112,7 @@ public:
         perf_.start();
         SecondScan();
         perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+        perf_.store(Step(StepType::RELABELING), perf_.last());
 
         perf_.start();
         Dealloc();
@@ -123,14 +125,14 @@ public:
         const int h = img_.rows;
         const int w = img_.cols;
 
-        LabelsSolver::Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1); // Memory allocation of the labels solver
+        ET.Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1); // Memory allocation of the labels solver
 
 
         // Data structure for memory test
         MemMat<unsigned char> img(img_);
         MemMat<int> img_labels(img_.size(), 0);
 
-        LabelsSolver::MemSetup();
+        ET.MemSetup();
 
         // First scan
 
@@ -152,25 +154,25 @@ public:
 #define CONDITION_S_BG c > 0 && img(r,c - 1) == 0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels(r, c) = LabelsSolver::MemNewLabel(); // new label
+#define ACTION_2 img_labels(r, c) = ET.MemNewLabel(); // new label
 #define ACTION_3 img_labels(r, c) = img_labels(r - 1, c - 1); // x <- p
 #define ACTION_4 img_labels(r, c) = img_labels(r - 1, c); // x <- q
 #define ACTION_5 img_labels(r, c) = img_labels(r - 1, c + 1); // x <- r
 #define ACTION_6 img_labels(r, c) = img_labels(r, c - 1); // x <- s
-#define ACTION_7 img_labels(r, c) = LabelsSolver::MemMerge((unsigned)img_labels(r - 1, c - 1), (unsigned)img_labels(r - 1, c + 1)); // x <- p + r
-#define ACTION_8 img_labels(r, c) = LabelsSolver::MemMerge((unsigned)img_labels(r, c - 1), (unsigned)img_labels(r - 1, c + 1)); // x <- s + r
-#define ACTION_9 img_labels(r, c) = LabelsSolver::MemMerge((unsigned)img_labels(r - 1, c), (unsigned)img_labels(r, c - 1)); // x <- q + s
+#define ACTION_7 img_labels(r, c) = ET.MemMerge((unsigned)img_labels(r - 1, c - 1), (unsigned)img_labels(r - 1, c + 1)); // x <- p + r
+#define ACTION_8 img_labels(r, c) = ET.MemMerge((unsigned)img_labels(r, c - 1), (unsigned)img_labels(r - 1, c + 1)); // x <- s + r
+#define ACTION_9 img_labels(r, c) = ET.MemMerge((unsigned)img_labels(r - 1, c), (unsigned)img_labels(r, c - 1)); // x <- q + s
 
 #include "labeling_sauf_bg_tree.inc.h"
             }
         }
 
         // Second scan
-        n_labels_ = LabelsSolver::MemFlatten();
+        n_labels_ = ET.MemFlatten();
 
         for (int r = 0; r < h; ++r) {
             for (int c = 0; c < w; ++c) {
-                img_labels(r, c) = LabelsSolver::MemGetLabel(img_labels(r, c));
+                img_labels(r, c) = ET.MemGetLabel(img_labels(r, c));
             }
         }
 
@@ -179,11 +181,11 @@ public:
 
         accesses[MD_BINARY_MAT] = (uint64_t)img.GetTotalAccesses();
         accesses[MD_LABELED_MAT] = (uint64_t)img_labels.GetTotalAccesses();
-        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)LabelsSolver::MemTotalAccesses();
+        accesses[MD_EQUIVALENCE_VEC] = (uint64_t)ET.MemTotalAccesses();
 
         img_labels_ = img_labels.GetImage();
 
-        LabelsSolver::MemDealloc();
+        ET.MemDealloc();
 
 #undef ACTION_1
 #undef ACTION_2
@@ -209,7 +211,7 @@ private:
     double Alloc()
     {
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1, perf_);
+        double ls_t = ET.Alloc((size_t)img_.rows * (((size_t)img_.cols + 1) / 2) + ((size_t)img_.cols + 1) / 2 + 1, perf_);
         // Memory allocation for the output image
         perf_.start();
         img_labels_ = cv::Mat1i(img_.size());
@@ -224,7 +226,7 @@ private:
         return ls_t + ma_t;
     }
     void Dealloc() {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan() {
@@ -234,7 +236,7 @@ private:
 
         // memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart); // Initialization
 
-        LabelsSolver::Setup();
+        ET.Setup();
 
         // Rosenfeld Mask
         // +-+-+-+
@@ -261,14 +263,14 @@ private:
 #define CONDITION_S_BG c > 0 && img_row[c - 1] == 0
 
 #define ACTION_1 // nothing to do 
-#define ACTION_2 img_labels_row[c] = LabelsSolver::NewLabel(); // new label
+#define ACTION_2 img_labels_row[c] = ET.NewLabel(); // new label
 #define ACTION_3 img_labels_row[c] = img_labels_row_prev[c - 1]; // x <- p
 #define ACTION_4 img_labels_row[c] = img_labels_row_prev[c]; // x <- q
 #define ACTION_5 img_labels_row[c] = img_labels_row_prev[c + 1]; // x <- r
 #define ACTION_6 img_labels_row[c] = img_labels_row[c - 1]; // x <- s
-#define ACTION_7 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
-#define ACTION_8 img_labels_row[c] = LabelsSolver::Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
-#define ACTION_9 img_labels_row[c] = LabelsSolver::Merge(img_labels_row_prev[c], img_labels_row[c - 1]); // x <- p + s
+#define ACTION_7 img_labels_row[c] = ET.Merge(img_labels_row_prev[c - 1], img_labels_row_prev[c + 1]); // x <- p + r
+#define ACTION_8 img_labels_row[c] = ET.Merge(img_labels_row[c - 1], img_labels_row_prev[c + 1]); // x <- s + r
+#define ACTION_9 img_labels_row[c] = ET.Merge(img_labels_row_prev[c], img_labels_row[c - 1]); // x <- p + s
 
 #include "labeling_sauf_bg_tree.inc.h"
             }
@@ -294,13 +296,13 @@ private:
     }
     void SecondScan()
     {
-        n_labels_ = LabelsSolver::Flatten();
+        n_labels_ = ET.Flatten();
 
         for (int r = 0; r < img_labels_.rows; ++r) {
             unsigned * img_row_start = img_labels_.ptr<unsigned>(r);
             unsigned * const img_row_end = img_row_start + img_labels_.cols;
             for (; img_row_start != img_row_end; ++img_row_start) {
-                *img_row_start = LabelsSolver::GetLabel(*img_row_start);
+                *img_row_start = ET.GetLabel(*img_row_start);
             }
         }
     }

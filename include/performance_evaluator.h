@@ -61,23 +61,14 @@ public:
         counters_[s].total += time;
     }
 
-    double get(const std::string& s) const
+    double get(const std::string& s)
     {
         return counters_.at(s).last;
     }
 
-    double get_total(const std::string& s) const
-    {
-        return counters_.at(s).total;
-    }
-
-    bool find(const std::string& s) const
+    bool find(const std::string& s)
     {
         return counters_.find(s) != counters_.end();
-    }
-
-    void reset_counters(void) {
-        counters_.clear();
     }
 
 private:

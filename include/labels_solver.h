@@ -10,12 +10,23 @@
 #include "register.h"
 #include "memory_tester.h"
 #include "performance_evaluator.h"
+#include <lsl3dlib/features.hpp>
+
+#include <cassert>
+
 
 // Union-find (UF)
 class UF {
     // Maximum number of labels (included background) = 2^(sizeof(unsigned) x 8)
 public:
-    static double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+    UF() : P_(nullptr), length_(0), start_index(0), end_index(0), mem_owner_(true) {
+    }
+
+    UF(unsigned* P, unsigned max_length) : P_(P), length_(0), start_index(0), end_index(0), mem_owner_(false) {
+    }
+    
+     double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+	 Dealloc();
         perf.start();
         P_ = new unsigned[max_length];
         memset(P_, 0, max_length * sizeof(unsigned));
@@ -26,21 +37,32 @@ public:
         perf.stop();
         return t - perf.last();
     }
-    static void Alloc(unsigned max_length) {
+     void Alloc(unsigned max_length) {
+	Dealloc();
         P_ = new unsigned[max_length];
     }
-    static void Dealloc() {
-        delete[] P_;
+     void Dealloc() {
+	 if (mem_owner_) {
+	     delete[] P_;
+	 }
+	 P_ = nullptr;
+	mem_owner_ = true;
     }
-    static void Setup() {
+    
+     void Setup() {
         P_[0] = 0;// First label is for background pixels
         length_ = 1;
+	start_index = 1;
+	end_index = 1;
     }
-    static unsigned NewLabel() {
-        P_[length_] = length_;
-        return length_++;
+     unsigned NewLabel() {
+	 int label = end_index;
+	 P_[end_index] = label;
+	 end_index++;
+	 return label;
     }
-    static unsigned GetLabel(unsigned index) {
+     unsigned GetLabel(unsigned index) {
+	 //assert(index < end_index);
         return P_[index];
     }
 
@@ -48,17 +70,25 @@ public:
     // - "UpdateTable" updates equivalences array without performing "Find" operations
     // - "FindRoot" finds the root of the tree of node i (for the other algorithms it is 
     //		already included in the "Merge" and "Flatten" functions).
-    static void UpdateTable(unsigned e, unsigned r) {
-        P_[e] = r;
+    void UpdateTable(unsigned e, unsigned r) {
+        assert(e >= r);
+	P_[e] = r;
     }
-    static unsigned FindRoot(unsigned root) {
+     unsigned FindRoot(unsigned root) {
         while (P_[root] < root) {
             root = P_[root];
         }
         return root;
     }
 
-    static unsigned Merge(unsigned i, unsigned j)
+    void SubTable(UF& subET, unsigned start) {
+	subET.P_ = P_;	
+	subET.length_ = start;
+	subET.start_index = start;
+	subET.end_index = start;
+    }
+    
+     unsigned Merge(unsigned i, unsigned j)
     {
         // FindRoot(i)
         while (P_[i] < i) {
@@ -75,41 +105,185 @@ public:
         return P_[i] = j;
     }
 
-    static unsigned Flatten()
+
+    void FlattenNoCompress() {
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    if (P_[i] < i) {
+		P_[i] = P_[P_[i]];
+	    }
+	}
+    }
+    
+    template <typename ConfFeatures>
+    void FlattenNoCompressFeatures(Features& features) {
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned par = P_[i];
+	    if (par < i) {
+		unsigned ppar = P_[par];
+		P_[i] = ppar;
+		if (par != ppar) {
+		    //std::cout << "Merging " << i << " with " << par << "\n";
+		    features.Merge<ConfFeatures>(i, par);
+		}
+	    }
+	}
+    }
+
+    
+    unsigned Flatten()
     {
-        unsigned k = 1;
-        for (unsigned i = 1; i < length_; ++i) {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
             if (P_[i] < i) {
                 P_[i] = P_[P_[i]];
+		//std::cout << "1) ET[" << i << "] = " << P_[P_[i]] << "\n";
             }
             else {
                 P_[i] = k;
+		//std::cout << "2) ET[" << i << "] = " << k << "\n";
                 k = k + 1;
             }
         }
-        return k;
+	
+	if (end_index > start_index) {
+	    //end_index = k;
+	}
+	return k - start_index;
     }
 
+    
+    template <typename ConfFeatures>
+    unsigned Flatten(Features& features)
+    {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
+            if (P_[i] < i) {
+
+		//if (P_[P_[i]] == 42) {
+		    //std::cout << "1. (" << i <<  ") P_[" << P_[i] << "] = " << P_[P_[i]] << "\n";
+		//}
+                P_[i] = P_[P_[i]];		
+            }
+            else {
+                P_[i] = k;
+		//std::cout << "2. P[" << i << "] = " << k << "\n";
+		features.Shift<ConfFeatures>(k, i);
+                k = k + 1;
+            }
+        }
+	
+	if (end_index > start_index) {
+	    //end_index = k;
+	}	
+        return k - start_index;
+    }
+
+    template <typename ConfFeatures>
+    unsigned FlattenWithFeatures(Features& features) {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned label = P_[i];
+            if (label < i) {
+		unsigned par = P_[label];
+		features.Merge<ConfFeatures>(i, par);
+                P_[i] = par;
+            }
+            else {
+		features.Shift<ConfFeatures>(k, i);
+                P_[i] = k;
+                k = k + 1;
+            }
+        }	
+	
+	if (end_index > start_index) {
+	    //end_index = k;
+	}	
+	return k - start_index;
+    }
+    
+    // Flatten a disjoint set of LabelsSolver into a single one
+    // This assumes that labels solvers share same memory pool
+    static unsigned MultiFlatten(UF* ET_chunks, size_t chunk_count) {
+	unsigned k = 0;
+
+	assert(chunk_count > 0);
+	UF* ET = &ET_chunks[0];
+	unsigned* __restrict__ P_ = ET->P_;
+
+	unsigned start = ET->start_index;
+	k = start;
+	for (size_t chunk = 0; chunk < chunk_count; chunk++) {
+	    UF* ET = &ET_chunks[chunk];
+	    unsigned start_index = ET->start_index;
+	    unsigned end_index = ET->end_index;
+	    
+	    for (unsigned i = start_index; i < end_index; i++) {
+		if (P_[i] < i) {
+		    P_[i] = P_[P_[i]];
+		} else {
+		    P_[i] = k;
+		    k++;
+		}		
+	    }
+	}
+	return k - start;
+    }
+
+    // Flatten a disjoint set of LabelsSolver into a single one
+    // This assumes that labels solvers share same memory pool
+    template <typename ConfFeatures>
+    static unsigned MultiFlatten(UF* ET_chunks, size_t chunk_count, Features& features) {
+	unsigned k = 0;
+
+	assert(chunk_count > 0);
+	UF* ET = &ET_chunks[0];
+	unsigned* __restrict__ P_ = ET->P_;
+
+	unsigned start = ET->start_index;
+	k = start;
+	for (size_t chunk = 0; chunk < chunk_count; chunk++) {
+	    UF* ET = &ET_chunks[chunk];
+	    unsigned start_index = ET->start_index;
+	    unsigned end_index = ET->end_index;
+	    
+	    for (unsigned i = start_index; i < end_index; i++) {
+		if (P_[i] < i) {
+		    P_[i] = P_[P_[i]];
+		} else {
+		    P_[i] = k;
+		    features.Shift<ConfFeatures>(k, i);
+		    k++;
+		}		
+	    }
+	}
+	return k - start;
+    }
+
+    
+    unsigned long Size() const {
+	return end_index - start_index;
+    }
+    
     /***************************************************************/
 
-    static void MemAlloc(unsigned max_length)
+     void MemAlloc(unsigned max_length)
     {
         mem_P_ = MemVector<unsigned>(max_length);
     }
-    static void MemDealloc() {}
-    static void MemSetup() {
+     void MemDealloc() {}
+     void MemSetup() {
         mem_P_[0] = 0;	 // First label is for background pixels
         length_ = 1;
     }
-    static unsigned MemNewLabel() {
+     unsigned MemNewLabel() {
         mem_P_[length_] = length_;
         return length_++;
     }
-    static unsigned MemGetLabel(unsigned index) {
+     unsigned MemGetLabel(unsigned index) {
         return mem_P_[index];
     }
 
-    static double MemTotalAccesses() {
+     double MemTotalAccesses() {
         return mem_P_.GetTotalAccesses();
     }
 
@@ -117,17 +291,17 @@ public:
     // - "MemUpdateTable" updates equivalences array without performing "MemFind" operations
     // - "MemFindRoot" finds the root of the tree of node i (for the other algorithms it is 
     //		already included in the "MemMerge" and "MemFlatten" functions).
-    static void MemUpdateTable(unsigned e, unsigned r) {
+     void MemUpdateTable(unsigned e, unsigned r) {
         mem_P_[e] = r;
     }
-    static unsigned MemFindRoot(unsigned root) {
+     unsigned MemFindRoot(unsigned root) {
         while (mem_P_[root] < root) {
             root = mem_P_[root];
         }
         return root;
     }
 
-    static unsigned MemMerge(unsigned i, unsigned j)
+     unsigned MemMerge(unsigned i, unsigned j)
     {
         // FindRoot(i)
         while (mem_P_[i] < i) {
@@ -143,7 +317,7 @@ public:
             return mem_P_[j] = i;
         return mem_P_[i] = j;
     }
-    static unsigned MemFlatten()
+     unsigned MemFlatten()
     {
         unsigned k = 1;
         for (unsigned i = 1; i < length_; ++i) {
@@ -157,10 +331,13 @@ public:
         }
         return k;
     }
+public:
+    unsigned *P_;
+    unsigned length_;
+    unsigned start_index, end_index;
+    bool mem_owner_;
 private:
-    static unsigned *P_;
-    static unsigned length_;
-    static MemVector<unsigned> mem_P_;
+     MemVector<unsigned> mem_P_;
 };
 
 // Union-Find (UF) with path compression (PC) as in:
@@ -169,7 +346,14 @@ private:
 class UFPC {
     // Maximum number of labels (included background) = 2^(sizeof(unsigned) x 8)
 public:
-    static double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+    UFPC() : P_(nullptr), length_(0), mem_owner_(true) {
+    }
+
+    UFPC(unsigned* P, unsigned max_length) : P_(P), mem_owner_(false) {
+    }
+    
+     double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+	 Dealloc();
         perf.start();
         P_ = new unsigned[max_length];
         memset(P_, 0, max_length * sizeof(unsigned));
@@ -180,25 +364,59 @@ public:
         perf.stop();
         return t - perf.last();
     }
-    static void Alloc(unsigned max_length) {
+    
+    void Alloc(unsigned max_length) {
+	Dealloc();
         P_ = new unsigned[max_length];
     }
-    static void Dealloc() {
-        delete[] P_;
+    
+    void Dealloc() {
+	if (mem_owner_) {
+	    delete[] P_;
+	}
+	P_ = nullptr;
+	mem_owner_ = true;
     }
-    static void Setup() {
+    
+    void Setup() {
         P_[0] = 0;	 // First label is for background pixels
         length_ = 1;
+	start_index = 1;
+	end_index = 1;
     }
-    static unsigned NewLabel() {
-        P_[length_] = length_;
-        return length_++;
+
+    void SubTable(UFPC& subET, unsigned start_index) {
+	subET.P_ = P_;
+	subET.length_ = 0;
+	subET.start_index = start_index;
+	subET.end_index = start_index;
     }
-    static unsigned GetLabel(unsigned index) {
+    
+    unsigned NewLabel() {
+	int label = end_index;
+        P_[end_index] = label;
+	end_index++;
+        return label;
+    }
+    
+    unsigned GetLabel(unsigned index) {
         return P_[index];
     }
 
-    static unsigned Merge(unsigned i, unsigned j)
+    unsigned FindRoot(unsigned i) {
+	unsigned root = i;
+	while (P_[root] < root) {
+	    root = P_[root];
+	}
+	return root;
+    }
+
+    void UpdateTable(unsigned e, unsigned r) {
+	assert(e >= r);
+	P_[e] = r;
+    }   
+    
+     unsigned Merge(unsigned i, unsigned j)
     {
         // FindRoot(i)
         unsigned root(i);
@@ -231,10 +449,32 @@ public:
         P_[i] = root;
         return root;
     }
-    static unsigned Flatten()
+
+
+    void FlattenNoCompress() {
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    if (P_[i] < i) {
+                P_[i] = P_[P_[i]];
+            }
+	}
+    }
+
+    template <typename ConfFeatures>
+    void FlattenNoCompressFeatures(Features& features) {
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned par = P_[i];
+	    if (par < i) {
+		P_[i] = P_[par];
+		features.Merge<ConfFeatures>(i, par);
+	    }
+	}
+    }
+
+    
+    unsigned Flatten()
     {
-        unsigned k = 1;
-        for (unsigned i = 1; i < length_; ++i) {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
             if (P_[i] < i) {
                 P_[i] = P_[P_[i]];
             }
@@ -243,32 +483,122 @@ public:
                 k = k + 1;
             }
         }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
         return k;
     }
 
+    
+    template <typename ConfFeatures>
+    unsigned Flatten(Features& features)
+    {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
+            if (P_[i] < i) {
+                P_[i] = P_[P_[i]];
+            }
+            else {
+                P_[i] = k;
+		features.Shift<ConfFeatures>(k, i);
+                k = k + 1;
+            }
+        }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
+        return k;
+    }
+
+    template <typename ConfFeatures>
+    unsigned FlattenWithFeatures(Features& features)
+    {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned label = P_[i];
+            if (label < i) {
+		unsigned par = P_[label];
+		features.Merge<ConfFeatures>(label, par);
+                P_[i] = par;
+            }
+            else {
+                P_[i] = k;
+                k = k + 1;
+            }
+        }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
+        return k;
+    }
+
+    
+    // Flatten a disjoint set of LabelsSolver into a single one
+    // This assumes that labels solvers share same memory pool
+    static unsigned MultiFlatten(UFPC* ET_chunks, size_t chunk_count) {
+	unsigned k = 0;
+
+	assert(chunk_count > 0);
+	UFPC* ET = &ET_chunks[0];
+	unsigned* __restrict__ P_ = ET->P_;
+
+	k = ET->P_[ET->start_index];
+	for (size_t chunk = 0; chunk < chunk_count; chunk++) {
+	    UFPC* ET = &ET_chunks[chunk];
+	    unsigned start_index = ET->start_index;
+	    unsigned end_index = ET->end_index;
+	    
+	    for (unsigned i = start_index; i < end_index; i++) {
+		if (P_[i] < i) {
+		    P_[i] = P_[P_[i]];
+		} else {
+		    P_[i] = k;
+		    k++;
+		}		
+	    }
+	    if (end_index > start_index) {
+		ET->end_index = k;
+	    }
+	}
+	return k;	
+    }
+
+    template <typename ConfFeatures>
+    static unsigned MultiFlatten(UFPC* ET_chunks, size_t chunk_count, Features& features) {
+	return 0;
+    }
+
+    
+    unsigned long Size() const {
+	return end_index - start_index;
+    }
+    
     /***************************************************************/
 
-    static void MemAlloc(unsigned max_length) {
+     void MemAlloc(unsigned max_length) {
         mem_P_ = MemVector<unsigned>(max_length);
     }
-    static void MemDealloc() {}
-    static void MemSetup() {
+     void MemDealloc() {}
+     void MemSetup() {
         mem_P_[0] = 0;	 // First label is for background pixels
         length_ = 1;
     }
-    static unsigned MemNewLabel() {
+     unsigned MemNewLabel() {
         mem_P_[length_] = length_;
         return length_++;
     }
-    static unsigned MemGetLabel(unsigned index) {
+     unsigned MemGetLabel(unsigned index) {
         return mem_P_[index];
     }
 
-    static double MemTotalAccesses() {
+     double MemTotalAccesses() {
         return mem_P_.GetTotalAccesses();
     }
 
-    static unsigned MemMerge(unsigned i, unsigned j)
+     unsigned MemMerge(unsigned i, unsigned j)
     {
         // FindRoot(i)
         unsigned root(i);
@@ -301,10 +631,10 @@ public:
         mem_P_[i] = root;
         return root;
     }
-    static unsigned MemFlatten()
+     unsigned MemFlatten()
     {
-        unsigned k = 1;
-        for (unsigned i = 1; i < length_; ++i) {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
             if (mem_P_[i] < i) {
                 mem_P_[i] = mem_P_[mem_P_[i]];
             }
@@ -313,13 +643,17 @@ public:
                 k = k + 1;
             }
         }
+
+	end_index = k + 1;
         return k;
     }
 
 private:
-    static unsigned *P_;
-    static unsigned length_;
-    static MemVector<unsigned> mem_P_;
+    unsigned *P_;
+    unsigned length_;    
+    MemVector<unsigned> mem_P_;
+    unsigned start_index, end_index;
+    bool mem_owner_;
 };
 
 // Interleaved Rem algorithm with SPlicing (SP) as in: 
@@ -328,7 +662,8 @@ private:
 class RemSP {
     // Maximum number of labels (included background) = 2^(sizeof(unsigned) x 8)
 public:
-    static double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+     double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+	 Dealloc();
         perf.start();
         P_ = new unsigned[max_length];
         memset(P_, 0, max_length * sizeof(unsigned));
@@ -339,25 +674,60 @@ public:
         perf.stop();
         return t - perf.last();
     }
-    static void Alloc(unsigned max_length) {
+    
+     void Alloc(unsigned max_length) {
+	Dealloc();
         P_ = new unsigned[max_length];
     }
-    static void Dealloc() {
-        delete[] P_;
+    
+     void Dealloc() {
+	 if (mem_owner_) {
+	     delete[] P_;
+	 }
+	 P_ = nullptr;
+	 mem_owner_ = true;
     }
-    static void Setup() {
+    
+     void Setup() {
         P_[0] = 0;	 // First label is for background pixels
         length_ = 1;
+	start_index = 1;
+	end_index = 1;
     }
-    static unsigned NewLabel() {
-        P_[length_] = length_;
-        return length_++;
+
+    void SubTable(RemSP& subET, unsigned start_index) {
+	subET.P_ = P_;
+	subET.P_ = P_;
+	subET.start_index = start_index;
+	subET.end_index = start_index;
+	subET.mem_owner_ = false;	
     }
-    static unsigned GetLabel(unsigned index) {
+    
+     unsigned NewLabel() {
+        P_[end_index] = end_index;
+        return end_index++;
+    }
+    
+     unsigned GetLabel(unsigned index) {
         return P_[index];
     }
 
-    static unsigned Merge(unsigned i, unsigned j)
+    unsigned FindRoot(unsigned i) {
+	assert(false && "Not implemented yet");
+	return 0;
+    }
+    
+    void UpdateTable(unsigned i, unsigned j) {
+	assert(false && "Not implemented yet");	
+    }
+
+    unsigned long Size() const {
+	return end_index - start_index;
+    }
+
+
+    
+     unsigned Merge(unsigned i, unsigned j)
     {
         unsigned root_i(i), root_j(j);
 
@@ -383,10 +753,32 @@ public:
         }
         return P_[root_i];
     }
-    static unsigned Flatten()
+
+
+    void FlattenNoCompress() {
+        for (unsigned i = start_index; i < end_index; ++i) {
+            if (P_[i] < i) {
+                P_[i] = P_[P_[i]];
+            }
+	}	
+    }
+
+    template <typename ConfFeatures>
+    void FlattenNoCompressFeatures(Features& features) {
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned par = P_[i];
+	    if (par < i) {
+		P_[i] = P_[par];
+		features.Merge<ConfFeatures>(i, par);
+	    }
+	}
+    }
+
+    
+    unsigned Flatten()
     {
-        unsigned k = 1;
-        for (unsigned i = 1; i < length_; ++i) {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
             if (P_[i] < i) {
                 P_[i] = P_[P_[i]];
             }
@@ -395,32 +787,96 @@ public:
                 k = k + 1;
             }
         }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
+        return k;
+    }
+    
+    template <typename ConfFeatures>
+    unsigned Flatten(Features& features)
+    {
+        unsigned k = start_index;
+        for (unsigned i = start_index; i < end_index; ++i) {
+            if (P_[i] < i) {
+                P_[i] = P_[P_[i]];
+            }
+            else {
+                P_[i] = k;
+		features.Shift<ConfFeatures>(k, i);
+                k = k + 1;
+            }
+        }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
         return k;
     }
 
+    template <typename ConfFeatures>
+    unsigned FlattenWithFeatures(Features& features) {
+	
+	unsigned k = start_index;
+	for (unsigned i = start_index; i < end_index; ++i) {
+	    unsigned label = P_[i];
+	    unsigned par = P_[label];
+
+            if (label < i) {
+		features.Merge<ConfFeatures>(label, par);
+                P_[i] = par;
+            }
+            else {
+		features.Shift<ConfFeatures>(i, k);
+                P_[i] = k;		
+                k = k + 1;
+            }
+        }
+
+	if (end_index > start_index) {
+	    end_index = k;
+	}
+        return k;
+    }
+
+    
+    static unsigned MultiFlatten(RemSP* ET_chunks, size_t chunk_count) {
+	return 0;
+    }
+
+    template <typename ConfFeatures>
+    static unsigned MultiFlatten(RemSP* ET_chunks, size_t chunk_count, Features& features) {
+	return 0;
+    }
+    
     /***************************************************************/
 
-    static void MemAlloc(unsigned max_length) {
+     void MemAlloc(unsigned max_length) {
         mem_P_ = MemVector<unsigned>(max_length);
     }
-    static void MemDealloc() {}
-    static void MemSetup() {
+    
+     void MemDealloc() {}
+    
+     void MemSetup() {
         mem_P_[0] = 0;	 // First label is for background pixels
         length_ = 1;
     }
-    static unsigned MemNewLabel() {
+    
+     unsigned MemNewLabel() {
         mem_P_[length_] = length_;
         return length_++;
     }
-    static unsigned MemGetLabel(unsigned index) {
+    
+     unsigned MemGetLabel(unsigned index) {
         return mem_P_[index];
     }
 
-    static double MemTotalAccesses() {
+     double MemTotalAccesses() {
         return mem_P_.GetTotalAccesses();
     }
 
-    static unsigned MemMerge(unsigned i, unsigned j)
+     unsigned MemMerge(unsigned i, unsigned j)
     {
         unsigned root_i(i), root_j(j);
         while (mem_P_[root_i] != mem_P_[root_j]) {
@@ -445,7 +901,7 @@ public:
         }
         return mem_P_[root_i];
     }
-    static unsigned MemFlatten()
+     unsigned MemFlatten()
     {
         unsigned k = 1;
         for (unsigned i = 1; i < length_; ++i) {
@@ -461,9 +917,11 @@ public:
     }
 
 private:
-    static unsigned *P_;
-    static unsigned length_;
-    static MemVector<unsigned> mem_P_;
+    unsigned *P_;
+    unsigned length_;
+    MemVector<unsigned> mem_P_;
+    unsigned start_index, end_index;
+    bool mem_owner_;
 };
 
 // Three Table Array as in: 
@@ -473,7 +931,11 @@ class TTA {
     // Maximum number of labels (included background) = 2^(sizeof(unsigned) x 8) - 1:
     // the special value "-1" for next_ table array has been replace with UINT_MAX
 public:
-    static double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+    TTA() : mem_owner_(false) {
+    }
+    
+    double Alloc(unsigned max_length, PerformanceEvaluator& perf) {
+	Dealloc();
         perf.start();
         rtable_ = new unsigned[max_length];
         next_ = new unsigned[max_length];
@@ -490,35 +952,64 @@ public:
         perf.stop();
         return t - perf.last();
     }
-    static void Alloc(unsigned max_length) {
+    
+    void Alloc(unsigned max_length) {
+	Dealloc();
         rtable_ = new unsigned[max_length];
         next_ = new unsigned[max_length];
         tail_ = new unsigned[max_length];
     }
-    static void Dealloc() {
-        delete[] rtable_;
-        delete[] next_;
-        delete[] tail_;
+    
+    void Dealloc() {
+	if (mem_owner_) {
+	    delete[] rtable_;
+	    delete[] next_;
+	    delete[] tail_;
+	}
+	mem_owner_ = true;
+	
+	rtable_ = nullptr;
+	next_ = nullptr;
+	tail_ = nullptr;
     }
-    static void Setup() {
+
+    void SubTable(TTA& subET, unsigned start_index) {
+	subET.mem_owner_ = false;
+	subET.rtable_ = rtable_;
+	subET.next_ = next_;
+	subET.tail_ = tail_;
+	subET.length_ = start_index;
+	subET.start_index = start_index;
+	subET.end_index = start_index;
+    }
+    
+     void Setup() {
+	 
         rtable_[0] = 0;
         length_ = 1;
     }
-    static unsigned NewLabel() {
-        rtable_[length_] = length_;
-        next_[length_] = UINT_MAX;
-        tail_[length_] = length_;
-        return length_++;
+    
+     unsigned NewLabel() {
+        rtable_[end_index] = end_index;
+        next_[end_index] = UINT_MAX;
+        tail_[end_index] = end_index;
+        return end_index++;
     }
-    static unsigned GetLabel(unsigned index) {
+    
+    unsigned GetLabel(unsigned index) {
         return rtable_[index];
     }
 
+    unsigned long Size() const {
+	return end_index - start_index;
+    }
+
+    
     // Basic functions of the TTA solver required only by the Light-Speed Labeling Algorithms:
     // - "UpdateTable" updates equivalences tables without performing "Find" operations
     // - "FindRoot" finds the root of the tree of node i (for the other algorithms it is 
     //		already included in the "Merge" and "Flatten" functions).
-    static void UpdateTable(unsigned u, unsigned v)
+     void UpdateTable(unsigned u, unsigned v)
     {
         if (u < v) {
             unsigned i = v;
@@ -539,12 +1030,12 @@ public:
             tail_[v] = tail_[u];
         }
     }
-    static unsigned FindRoot(unsigned i)
+     unsigned FindRoot(unsigned i)
     {
         return rtable_[i];
     }
 
-    static unsigned Merge(unsigned u, unsigned v)
+     unsigned Merge(unsigned u, unsigned v)
     {
         // FindRoot(u);
         u = rtable_[u];
@@ -574,10 +1065,35 @@ public:
 
         return u;  // equal to v
     }
-    static unsigned Flatten()
+
+    void FlattenNoCompress() {
+	for (unsigned k = start_index; k < end_index; k++) {
+	    unsigned par = rtable_[k];
+	    if (par != k) {
+                rtable_[k] = rtable_[par];
+	    }
+	}
+    }
+
+    template <typename ConfFeatures>
+    void FlattenNoCompressFeatures(Features& features) {
+	for (unsigned k = start_index; k < end_index; k++) {
+	    unsigned par = rtable_[k];
+	    if (par != k) {
+                rtable_[k] = rtable_[par];
+		features.Merge<ConfFeatures>(k, par);
+	    }
+	}
+    }
+
+
+    
+
+    
+     unsigned Flatten()
     {
-        unsigned cur_label = 1;
-        for (unsigned k = 1; k < length_; k++) {
+        unsigned cur_label = start_index;
+        for (unsigned k = start_index; k < end_index; k++) {
             if (rtable_[k] == k) {
                 cur_label++;
                 rtable_[k] = cur_label;
@@ -586,32 +1102,112 @@ public:
                 rtable_[k] = rtable_[rtable_[k]];
         }
 
+	if (end_index > start_index) {
+	    end_index = cur_label;
+	}
         return cur_label;
     }
 
+    
+    template <typename ConfFeatures>
+     unsigned Flatten(Features& features)
+    {
+        unsigned cur_label = start_index;
+        for (unsigned k = start_index; k < end_index; k++) {
+            if (rtable_[k] == k) {
+                cur_label++;
+                rtable_[k] = cur_label;
+		features.Shift<ConfFeatures>(cur_label, k);
+            }
+            else
+                rtable_[k] = rtable_[rtable_[k]];
+        }
+
+	if (end_index > start_index) {
+	    end_index = cur_label;
+	}
+        return cur_label;
+    }
+
+    static unsigned MultiFlatten(TTA* ET_chunks, size_t chunk_count) {
+	unsigned cur_label = 0;
+	assert(chunk_count > 0);
+	unsigned* __restrict__ rtable_ = ET_chunks[0].rtable_;	
+	cur_label = ET_chunks[0].start_index;
+	
+	for (size_t chunk = 0; chunk < chunk_count; chunk++) {
+	    TTA* ET = &ET_chunks[chunk];
+	    unsigned start_index = ET->start_index;
+	    unsigned end_index = ET->end_index;
+	    
+	    for (unsigned i = start_index; i < end_index; i++) {
+		if (rtable_[cur_label] == cur_label) {
+		    cur_label++;
+		    rtable_[cur_label] = cur_label;
+		} else {
+		    rtable_[cur_label] = rtable_[rtable_[cur_label]]; 
+		}
+	    }
+	    
+	    if (end_index > start_index) {
+		ET->end_index = cur_label;
+	    }						   
+	}
+	return cur_label;
+    }
+
+    template <typename ConfFeatures>
+    static unsigned MultiFlatten(TTA* ET_chunks, size_t chunk_count, Features& features) {
+	return 0;
+    }
+
+    
+    template <typename ConfFeatures>
+    unsigned FlattenWithFeatures(Features& features) {
+        unsigned cur_label = start_index;
+        for (unsigned k = start_index; k < end_index; k++) {
+	    int label =- rtable_[k];
+            if (label == k) {
+                cur_label++;
+                rtable_[k] = cur_label;
+            }
+            else {
+		int par = rtable_[label];
+		features.Merge<ConfFeatures>(label, par);
+                rtable_[k] = par;
+	    }
+        }
+
+	if (end_index > start_index) {
+	    end_index = cur_label;
+	}
+        return cur_label;
+    }
+
+    
     /***************************************************************/
 
-    static void MemAlloc(unsigned max_length) {
+     void MemAlloc(unsigned max_length) {
         mem_rtable_ = MemVector<unsigned>(max_length);
         mem_next_ = MemVector<unsigned>(max_length);
         mem_tail_ = MemVector<unsigned>(max_length);
     }
-    static void MemDealloc() {}
-    static void MemSetup() {
+     void MemDealloc() {}
+     void MemSetup() {
         mem_rtable_[0] = 0;
         length_ = 1;
     }
-    static unsigned MemNewLabel() {
+     unsigned MemNewLabel() {
         mem_rtable_[length_] = length_;
         mem_next_[length_] = UINT_MAX;
         mem_tail_[length_] = length_;
         return length_++;
     }
-    static unsigned MemGetLabel(unsigned index) {
+     unsigned MemGetLabel(unsigned index) {
         return mem_rtable_[index];
     }
 
-    static double MemTotalAccesses() {
+     double MemTotalAccesses() {
         return mem_rtable_.GetTotalAccesses() +
             mem_next_.GetTotalAccesses() +
             mem_tail_.GetTotalAccesses();
@@ -621,7 +1217,7 @@ public:
     // - "MemUpdateTable" updates equivalences tables without performing "MemFind" operations
     // - "MemFindRoot" finds the root of the tree of node i (for the other algorithms it is 
     //		already included in the "MemMerge" and "MemFlatten" functions).
-    static void MemUpdateTable(unsigned u, unsigned v)
+     void MemUpdateTable(unsigned u, unsigned v)
     {
         if (u < v) {
             unsigned i = v;
@@ -642,12 +1238,12 @@ public:
             mem_tail_[v] = mem_tail_[u];
         }
     }
-    static unsigned MemFindRoot(unsigned i)
+     unsigned MemFindRoot(unsigned i)
     {
         return mem_rtable_[i];
     }
 
-    static unsigned MemMerge(unsigned u, unsigned v)
+     unsigned MemMerge(unsigned u, unsigned v)
     {
         // FindRoot(u);
         u = mem_rtable_[u];
@@ -677,7 +1273,7 @@ public:
 
         return u;  // equal to v
     }
-    static unsigned MemFlatten()
+     unsigned MemFlatten()
     {
         // In order to renumber and count the labels: is it really necessary? 
         unsigned cur_label = 1;
@@ -694,14 +1290,15 @@ public:
     }
 
 private:
-    static unsigned *rtable_;
-    static unsigned *next_;
-    static unsigned *tail_;
-    static unsigned length_;
-    static MemVector<unsigned> mem_rtable_;
-    static MemVector<unsigned> mem_next_;
-    static MemVector<unsigned> mem_tail_;
-
+     unsigned *rtable_;
+     unsigned *next_;
+     unsigned *tail_;
+     unsigned length_;
+     MemVector<unsigned> mem_rtable_;
+     MemVector<unsigned> mem_next_;
+     MemVector<unsigned> mem_tail_;
+    unsigned start_index, end_index;
+    bool mem_owner_;
 };
 
 #define REGISTER_LABELING_WITH_EQUIVALENCES_SOLVERS(algorithm) \

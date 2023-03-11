@@ -79,6 +79,8 @@ bool CheckLabeledVolume(const cv::Mat& img, const cv::Mat& labels, cv::Mat& erro
 // Hide blinking cursor from console
 void HideConsoleCursor();
 
+void ShowConsoleCursor();
+
 int RedirectCvError(int status, const char* func_name, const char* err_msg, const char* file_name, int line, void*);
 
 /*

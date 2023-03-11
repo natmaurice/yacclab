@@ -16,7 +16,11 @@
 
 #include "cuda_mat3.hpp"
 #include "volume_util.h"
+#include <lsl3dlib/features.hpp>
 
+struct ImageMetadata {
+    size_t width, height, depth;
+};
 
 class YacclabTensor {
 public:
@@ -30,7 +34,7 @@ public:
 class YacclabTensorInput : public YacclabTensor {
 public:
     virtual void Create() = 0;
-    virtual bool ReadBinary(const std::string &filename) = 0;
+    virtual bool ReadBinary(const std::string &filename, ImageMetadata& metadata) = 0;
     virtual unsigned int Dims() = 0;
 };
 
@@ -38,9 +42,23 @@ class YacclabTensorInput2D : public YacclabTensorInput {
 protected:
     static cv::Mat1b mat_;
 public:
-    virtual void Create() override { mat_.create(1, 1); }
+    virtual void Create() override {
+
+	constexpr size_t ROW_PADDING = 64;
+	int stride = ROW_PADDING;
+
+	cv::Mat1b pmat(1, ROW_PADDING);
+	memset(pmat.data, 0, ROW_PADDING);
+
+	cv::Range rect[] = {
+	    cv::Range(0, 1),
+	    cv::Range(0, 1)
+	};
+	mat_ = pmat(rect);
+    }
+    
     virtual void Release() override { mat_.release(); }
-    virtual bool ReadBinary(const std::string &filename) override;
+    virtual bool ReadBinary(const std::string &filename, ImageMetadata& metadata) override;
     virtual cv::Mat& GetMat() {  return mat_;  }
     virtual cv::Mat1b& Raw() {  return mat_;  }
 	virtual unsigned int Dims() override { return 2; };
@@ -48,13 +66,35 @@ public:
 
 class YacclabTensorInput3D : public YacclabTensorInput {
 protected:
-    static cv::Mat mat_;
+    static cv::Mat1b mat_;
 public:
-    virtual void Create() override {    int sz[] = { 1, 1, 1 };    mat_.create(3, sz, CV_8UC1);    }
+    virtual void Create() override {
+	int sz[] = { 1, 1, 1 };
+	int type = CV_8UC1;
+
+	constexpr size_t ROW_PADDING = 64;
+
+	int stride = ROW_PADDING;
+
+	int psize[] = {1, 1, ROW_PADDING};
+	int size = ROW_PADDING;
+	
+	cv::Mat pmat(3, psize, type);
+	memset(pmat.data, 0, size);
+	    	
+	cv::Range rect[] = {
+	    cv::Range(0, 1),
+	    cv::Range(0, 1),
+	    cv::Range(0, 1)
+	};
+	
+	mat_ = pmat(rect);
+    }
+    
     virtual void Release() override {  mat_.release(); }
-    virtual bool ReadBinary(const std::string &filename) override;
+    virtual bool ReadBinary(const std::string &filename, ImageMetadata& metadata) override;
     virtual cv::Mat& GetMat() { return mat_;  }
-    virtual cv::Mat& Raw() {  return mat_;  }
+    virtual cv::Mat1b& Raw() {  return mat_;  }
     virtual unsigned int Dims() override { return 3; };
 };
 
@@ -66,7 +106,7 @@ protected:
 public:
     virtual void Create() override {   YacclabTensorInput2D::Create();   d_mat_.upload(mat_);   }
     virtual void Release() override { YacclabTensorInput2D::Release();  d_mat_.release(); }
-    virtual bool ReadBinary(const std::string &filename) override;
+    virtual bool ReadBinary(const std::string &filename, ImageMetadata& metadata) override;
     virtual cv::Mat& GetMat() override {  return mat_;  }
     virtual cv::cuda::GpuMat& GpuRaw() {  return d_mat_;  }
 };
@@ -77,7 +117,7 @@ protected:
 public:
     virtual void Create() override { YacclabTensorInput3D::Create();   d_mat_.upload(mat_); }
     virtual void Release() override { YacclabTensorInput3D::Release();  d_mat_.release(); }
-    virtual bool ReadBinary(const std::string &filename) override;
+    virtual bool ReadBinary(const std::string &filename, ImageMetadata& metadata) override;
     virtual cv::Mat& GetMat() override {  return mat_;  }
     virtual cv::cuda::GpuMat3& GpuRaw() {  return d_mat_;  }
 };
@@ -87,6 +127,7 @@ public:
 class YacclabTensorOutput : public YacclabTensor {
 public:
     virtual void NormalizeLabels(bool label_background = false) = 0;
+    virtual void NormalizeLabelsFeatures(Features& features, bool label_background = false, bool use_features = false) = 0;
     virtual void WriteColored(const std::string &filename) const = 0;
     virtual void PrepareForCheck() = 0;
 
@@ -104,6 +145,7 @@ public:
     YacclabTensorOutput2D(cv::Mat1i mat) : mat_(std::move(mat)) {}
 
     virtual void NormalizeLabels(bool label_background = false) override;
+    virtual void NormalizeLabelsFeatures(Features& features, bool label_background = false, bool use_features = false) override;
     virtual void WriteColored(const std::string &filename) const override;
     virtual void PrepareForCheck() override {}
     virtual void Release() override {  mat_.release();  }
@@ -114,17 +156,18 @@ public:
 
 class YacclabTensorOutput3D : public YacclabTensorOutput {
 protected:
-    cv::Mat mat_;
+    cv::Mat1i mat_;
 public:
     YacclabTensorOutput3D() {}
     YacclabTensorOutput3D(cv::Mat mat) : mat_(std::move(mat)) {}
 
     virtual void NormalizeLabels(bool label_background = false) override;
+    virtual void NormalizeLabelsFeatures(Features& features, bool label_background = false, bool use_features = false) override;
     virtual void WriteColored(const std::string &filename) const override;
     virtual void PrepareForCheck() override {}
     virtual void Release() override {  mat_.release();  }
     virtual const cv::Mat& GetMat() override {  return mat_;  }
-    virtual cv::Mat& Raw() {  return mat_;  }
+    virtual cv::Mat1i& Raw() {  return mat_;  }
     virtual std::unique_ptr<YacclabTensorOutput> Copy() const override {  return std::make_unique<YacclabTensorOutput3D>(mat_); }
 };
 

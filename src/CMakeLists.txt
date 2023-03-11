@@ -1,3 +1,15 @@
+
+  list(APPEND lsl3d_SRCs
+    labeling3D_lsl_er.cc
+    labeling3D_lsl_fsm.cc
+    labeling3D_lsl_double.cc
+
+    labeling3D_lsl_er_sse.cc
+    labeling3D_lsl_fsm_sse.cc
+    labeling3D_lsl_double_sse.cc
+  )
+
+#include_directories("${CMAKE_SOURCE_DIR}/lip6/src")
 target_sources(YACCLAB
     PRIVATE
         check_labeling.cc
@@ -26,10 +38,16 @@ target_sources(YACCLAB
         yacclab_tensor.cc
         labeling_sauf_4c.cc
         labeling_sauf_background.cc
+	
         labeling_lee_2021_brts.cc
         labeling_lee_2021_bmrs.cc
         labeling_PREDpp_2021.cc
         labeling_tagliatelle_2021.cc
+	
+	step_types.cc
+	
+
+	${lsl3d_SRCs}
 )
 
 

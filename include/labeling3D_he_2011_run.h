@@ -12,6 +12,9 @@
 #include "labeling_algorithms.h"
 #include "labels_solver.h"
 #include "memory_tester.h"
+#include "calc_features.hpp"
+
+
 
 struct Run
 {
@@ -27,8 +30,8 @@ public:
     size_t d_;
     size_t h_;
     size_t max_runs_;
-    Run *data_;       // This vector stores run data for each row of each slice
-    uint16_t *sizes_; // This vector stores the number of runs actually contained in each row of each slice
+    Run *data_ = nullptr;       // This vector stores run data for each row of each slice
+    uint16_t *sizes_ = nullptr; // This vector stores the number of runs actually contained in each row of each slice
 
     void Setup(size_t d, size_t h, size_t w)
     {
@@ -55,6 +58,7 @@ public:
 
     void Alloc()
     {
+        Dealloc();
         data_ = new Run[d_ * h_ * max_runs_];
         sizes_ = new uint16_t[d_ * h_];
     }
@@ -63,18 +67,22 @@ public:
     {
         delete[] data_;
         delete[] sizes_;
+	data_ = nullptr;
+	sizes_ = nullptr;
     }
 };
 
-template <typename LabelsSolver>
-class RBTS_3D : public Labeling3D<Connectivity3D::CONN_26>
+template <typename LabelsSolver, bool Relabeling = true, typename ConfFeatures = ConfFeatures3DNone>
+class RBTS_3D : public Labeling3D<Connectivity3D::CONN_26, ConfFeatures>
 {
+protected:
+    LabelsSolver ET;
 public:
     RBTS_3D() {}
 
     Table3D runs;
 
-    static inline int ProcessRun(uint16_t row_index, uint16_t row_nruns, Run* row_runs, Run* cur_run, bool *new_label)
+    inline int ProcessRun(uint16_t row_index, uint16_t row_nruns, Run* row_runs, Run* cur_run, bool *new_label)
     {
         // Discard previous non connected runs (step "2" of the 2D algorithm)
         for (;
@@ -91,7 +99,7 @@ public:
                 *new_label = false;
             }
             else {
-                LabelsSolver::Merge(cur_run->label, row_runs[row_index].label);
+                ET.Merge(cur_run->label, row_runs[row_index].label);
             }
         }
 
@@ -100,7 +108,7 @@ public:
             row_index < row_nruns &&
             row_runs[row_index].end <= cur_run->end;
             ++row_index) {
-            LabelsSolver::Merge(cur_run->label, row_runs[row_index].label);
+            ET.Merge(cur_run->label, row_runs[row_index].label);
         }
 
         // Get label without "removing the run" (step "4" of the 2D algorithm)
@@ -108,191 +116,100 @@ public:
         // a circular buffer.
         if (row_index < row_nruns &&
             row_runs[row_index].start <= cur_run->end + 1) {
-            LabelsSolver::Merge(cur_run->label, row_runs[row_index].label);
+            ET.Merge(cur_run->label, row_runs[row_index].label);
         }
         return row_index;
     }
 
     void PerformLabeling()
     {
-        int d = img_.size.p[0];
-        int h = img_.size.p[1];
-        int w = img_.size.p[2];
+        int d = this->img_.size.p[0];
+        int h = this->img_.size.p[1];
+        int w = this->img_.size.p[2];
 
-        img_labels_.create(3, img_.size.p, CV_32SC1);
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
+	
+	FirstScan();
+	SecondScan(elapsed);
 
-        runs.Setup(d, h, w);
-        runs.Alloc();
-
-        LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY); // Memory allocation of the labels solver
-        LabelsSolver::Setup(); // Labels solver initialization
-
-        // First scan
-        Run* run_slice00_row00 = runs.data_;
-        uint16_t* nruns_slice00_row00 = runs.sizes_;
-        for (int s = 0; s < d; s++) {
-
-            for (int r = 0; r < h; r++) {
-                // Row pointers for the input image
-                const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
-
-                int slice11_row00_index = 0;
-                int slice11_row11_index = 0;
-                int slice11_row01_index = 0;
-                int slice00_row11_index = 0;
-
-                int nruns = 0;
-
-                Run* run_slice11_row00 = run_slice00_row00 - (runs.max_runs_) * runs.h_;
-                Run* run_slice11_row11 = run_slice11_row00 - (runs.max_runs_);
-                Run* run_slice11_row01 = run_slice11_row00 + (runs.max_runs_);
-
-                Run* run_slice00_row11 = run_slice00_row00 - (runs.max_runs_);
-
-                uint16_t* nruns_slice11_row00 = nruns_slice00_row00 - h;
-                uint16_t* nruns_slice11_row11 = nruns_slice11_row00 - 1;
-                uint16_t* nruns_slice11_row01 = nruns_slice11_row00 + 1;
-
-                uint16_t* nruns_slice00_row11 = nruns_slice00_row00 - 1;
-
-                for (int c = 0; c < w; c++) {
-                    // Is there a new run ?
-                    if (img_slice00_row00[c] == 0) {
-                        continue;
-                    }
-
-                    // Yes (new run)
-                    bool new_label = true;
-                    run_slice00_row00[nruns].start = c; // We start from 1 because 0 is a "special" run
-                                                        // to store additional info
-                    for (; c < w && img_slice00_row00[c] > 0; ++c) {}
-                    run_slice00_row00[nruns].end = c - 1;
-
-                    if (s > 0) {
-                        if (r > 0) {
-                            slice11_row11_index = ProcessRun(slice11_row11_index,        // uint16_t row_index
-                                *nruns_slice11_row11,       // uint16_t row_nruns
-                                run_slice11_row11,          // Run* row_runs
-                                &run_slice00_row00[nruns],  // Run* cur_run
-                                &new_label                  // bool *new_label
-                            );
-                        }
-                        slice11_row00_index = ProcessRun(slice11_row00_index,        // uint16_t row_index
-                            *nruns_slice11_row00,       // uint16_t row_nruns
-                            run_slice11_row00,          // Run* row_runs
-                            &run_slice00_row00[nruns],  // Run* cur_run
-                            &new_label                  // bool *new_label
-                        );
-                        if (r < h - 1) {
-                            slice11_row01_index = ProcessRun(slice11_row01_index,        // uint16_t row_index
-                                *nruns_slice11_row01,       // uint16_t row_nruns
-                                run_slice11_row01,          // Run* row_runs
-                                &run_slice00_row00[nruns],  // Run* cur_run
-                                &new_label                  // bool *new_label
-                            );
-                        }
-                    }
-
-                    if (r > 0) {
-                        slice00_row11_index = ProcessRun(slice00_row11_index,        // uint16_t row_index
-                            *nruns_slice00_row11,       // uint16_t row_nruns
-                            run_slice00_row11,          // Run* row_runs
-                            &run_slice00_row00[nruns],  // Run* cur_run
-                            &new_label                  // bool *new_label
-                        );
-                    }
-
-                    if (new_label) {
-                        run_slice00_row00[nruns].label = LabelsSolver::NewLabel();
-                    }
-                    nruns++;
-                } // Columns cycle end
-
-                run_slice00_row00 += (runs.max_runs_);
-                (*nruns_slice00_row00++) = nruns;
-            } // Rows cycle end
-        } // Planes cycle end
-
-        // Second scan
-        LabelsSolver::Flatten();
-
-        int* img_row = reinterpret_cast<int*>(img_labels_.data);
-        Run* run_row = runs.data_;
-        uint16_t* nruns = runs.sizes_;
-        for (int s = 0; s < d; s++) {
-            for (int r = 0; r < h; r++) {
-                for (int id = 0; id < *nruns; id++) {
-                    for (int c = run_row[id].start; c <= run_row[id].end; ++c) {
-                        img_row[c] = LabelsSolver::GetLabel(run_row[id].label);
-                    }
-                }
-                run_row += (runs.max_runs_);
-                img_row += img_labels_.step[1] / sizeof(int);
-                nruns++;
-            }
-        }
-
-        LabelsSolver::Dealloc(); // Memory deallocation of the labels solver
-        runs.Dealloc(); // Memory deallocation of the Table3D
     }
 
     void PerformLabelingWithSteps()
     {
-        double alloc_timing = Alloc();
+	double alloc_timing = Alloc();
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
-
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
-
-        perf_.start();
-        Dealloc();
-        perf_.stop();
-        perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
+	int32_t depth = this->img_.size.p[0];
+	int32_t height = this->img_.size.p[1];
+	int32_t width = this->img_.size.p[2];
+	int32_t size = depth * height * width;
+	
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
+	
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed, this->samplers, size);
+	
+	SecondScan(elapsed); // Transitive Closure + Relabeling + Features
+	
+	this->perf_.start();
+	Dealloc();
+	this->perf_.stop();
+	this->perf_.store(Step(StepType::ALLOC_DEALLOC), this->perf_.last() + alloc_timing);
+	
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
 
+    bool UseRelabeling() const override {
+	return Relabeling;
+    }
+    
 private:
     double Alloc()
     {
+	Dealloc();
+	
+	this->samplers.Reset();
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_26_CONNECTIVITY, this->perf_);
         // Memory allocation of Table3D 
-        runs.Setup(img_.size.p[0], img_.size.p[1], img_.size.p[2]);
-        ls_t += runs.Alloc(perf_);
+        runs.Setup(this->img_.size.p[0], this->img_.size.p[1], this->img_.size.p[2]);
+        ls_t += runs.Alloc(this->perf_);
         // Memory allocation for the output image
-        perf_.start();
-        img_labels_.create(3, img_.size.p, CV_32SC1);
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double t = perf_.last();
-        perf_.start();
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double ma_t = t - perf_.last();
+        this->perf_.start();
+        this->img_labels_.create(3, this->img_.size.p);
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+	this->features.template Alloc<ConfFeatures>(UPPER_BOUND_26_CONNECTIVITY);
+        this->perf_.stop();
+        double t = this->perf_.last();
+	
+        this->perf_.start();
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+	this->features.template Touch<ConfFeatures>();
+	// TODO: touch the runs
+        this->perf_.stop();
+        double ma_t = t - this->perf_.last();
         // Return total time
         return ls_t + ma_t;
     }
+    
     void Dealloc()
     {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         runs.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
+    
     void FirstScan()
     {
-        int d = img_.size.p[0];
-        int h = img_.size.p[1];
-        int w = img_.size.p[2];
+        int d = this->img_.size.p[0];
+        int h = this->img_.size.p[1];
+        int w = this->img_.size.p[2];
 
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
+        //memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
 
-        LabelsSolver::Setup(); // Labels solver initialization
+        ET.Setup(); // Labels solver initialization
         
         // First scan
         Run* run_slice00_row00 = runs.data_;
@@ -301,7 +218,7 @@ private:
 
             for (int r = 0; r < h; r++) {
                 // Row pointers for the input image
-                const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+                const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
 
                 int slice11_row00_index = 0;
                 int slice11_row11_index = 0;
@@ -370,7 +287,7 @@ private:
                     }
 
                     if (new_label) {
-                        run_slice00_row00[nruns].label = LabelsSolver::NewLabel();
+                        run_slice00_row00[nruns].label = ET.NewLabel();
                     }
                     nruns++;
                 } // Columns cycle end
@@ -380,30 +297,63 @@ private:
             } // Rows cycle end
         } // Planes cycle end
     }
-    void SecondScan()
+    void SecondScan(Labeling::StepsDuration& elapsed)
     {
-        int d = img_.size.p[0];
-        int h = img_.size.p[1];
-        // int w = img_.size.p[2];
+        int d = this->img_.size.p[0];
+        int h = this->img_.size.p[1];
+        int w = this->img_.size.p[2];
 
-        // Second scan
-        LabelsSolver::Flatten();
+	unsigned size = d * h * w;
+	
+	MEASURE_STEP_TIME(
+	    this->n_labels_ = ET.Flatten(),
+	    StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
 
-        int* img_row = reinterpret_cast<int*>(img_labels_.data);
-        Run* run_row = runs.data_;
-        uint16_t* nruns = runs.sizes_;
-        for (int s = 0; s < d; s++) {
-            for (int r = 0; r < h; r++) {
-                for (int id = 0; id < *nruns; id++) {
-                    for (int c = run_row[id].start; c <= run_row[id].end; ++c) {
-                        img_row[c] = LabelsSolver::GetLabel(run_row[id].label);
-                    }
-                }
-                run_row += (runs.max_runs_);
-                img_row += img_labels_.step[1] / sizeof(int);
-                nruns++;
-            }
-        }
+	
+	if (!std::is_same<ConfFeatures, ConfFeatures3DNone>::value) {	
+	    MEASURE_STEP_TIME(
+		Run* run_row = runs.data_;
+		uint16_t* nruns = runs.sizes_;	
+
+		this->features.template Init<ConfFeatures>(this->n_labels_);
+	    
+		for (int s = 0; s < d; s++) {
+		    for (int r = 0; r < h; r++) {
+			for (int id = 0; id < *nruns; id++) {
+
+			    int seg_start = run_row[id].start;
+			    int seg_end = run_row[id].end;
+			    int label = ET.GetLabel(run_row[id].label);
+						
+			    this->features.template AddSegment3D<ConfFeatures>(
+				label, r, s, seg_start, seg_end + 1);
+			}
+			run_row += (runs.max_runs_);
+			nruns++;
+		    }
+		}, StepType::FEATURES, this->perf_, elapsed, this->samplers, size);
+	}
+
+
+	if (UseRelabeling()) {
+	    MEASURE_STEP_TIME(
+		int* img_row = reinterpret_cast<int*>(this->img_labels_.data);
+		Run* run_row = runs.data_;
+		uint16_t* nruns = runs.sizes_;	
+		for (int s = 0; s < d; s++) {
+		    for (int r = 0; r < h; r++) {
+			memset(img_row, 0, w * sizeof(int));
+			for (int id = 0; id < *nruns; id++) {
+			    for (int c = run_row[id].start; c <= run_row[id].end; ++c) {
+				img_row[c] = ET.GetLabel(run_row[id].label);
+			    }
+			}
+			run_row += (runs.max_runs_);
+			img_row += this->img_labels_.step[1] / sizeof(int);
+			nruns++;
+		    }
+		}, StepType::RELABELING, this->perf_, elapsed, this->samplers, size);
+	}
     }
 };
 

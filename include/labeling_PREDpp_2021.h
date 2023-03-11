@@ -15,17 +15,19 @@
 #include "labels_solver.h"
 #include "memory_tester.h"
 
-template <typename LabelsSolver>
+template <typename LabelsSolver, typename ConfFeatures = ConfFeatures2DNone>
 class PREDpp : public Labeling2D<Connectivity2D::CONN_8> {
+protected:
+    LabelsSolver ET;
 public:
     PREDpp() {}
 
     void PerformLabeling()
     {
-        img_labels_ = cv::Mat1i(img_.size(), 0); // Call to memset
+        this->img_labels_ = cv::Mat1i(this->img_.size(), 0); // Call to memset
 
-        LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY);
-        LabelsSolver::Setup();
+        ET.Alloc(UPPER_BOUND_8_CONNECTIVITY);
+        ET.Setup();
 
         // Rosenfeld Mask
         // +-+-+-+
@@ -35,8 +37,8 @@ public:
         // +-+-+
 
         // First Scan
-        int w(img_.cols);
-        int h(img_.rows);
+        int w(this->img_.cols);
+        int h(this->img_.rows);
 
         //Conditions:
 #define CONDITION_P img_row11[c - 1] > 0
@@ -50,7 +52,7 @@ public:
 // Action 1: nothing
 #define ACTION_1 
 // Action 2: x<-newlabel
-#define ACTION_2 img_labels_row00[c] = LabelsSolver::NewLabel();
+#define ACTION_2 img_labels_row00[c] = ET.NewLabel();
 // Action 3: x<-p
 #define ACTION_3 img_labels_row00[c] = img_labels_row11[c - 1];
 // Action 4: x<-q
@@ -58,11 +60,11 @@ public:
 // Action 5: x<-r
 #define ACTION_5 img_labels_row00[c] = img_labels_row11[c + 1];
 // Action 6: x<-p+r
-#define ACTION_6 img_labels_row00[c] = LabelsSolver::Merge(img_labels_row11[c + 1], img_labels_row11[c - 1]);
+#define ACTION_6 img_labels_row00[c] = ET.Merge(img_labels_row11[c + 1], img_labels_row11[c - 1]);
 // Action 7: x<-s
 #define ACTION_7 img_labels_row00[c] = img_labels_row00[c - 1];
 // Action 8: x<-r+s
-#define ACTION_8 img_labels_row00[c] = LabelsSolver::Merge(img_labels_row00[c - 1], img_labels_row11[c + 1]);
+#define ACTION_8 img_labels_row00[c] = ET.Merge(img_labels_row00[c - 1], img_labels_row11[c + 1]);
 
 
 #define COLS w
@@ -70,10 +72,10 @@ public:
         {
             int c = -1;
 
-            const unsigned char* const img_row00 = img_.ptr<unsigned char>(0);
+            const unsigned char* const img_row00 = this->img_.template ptr<unsigned char>(0);
 
             // Row pointers for the output image 
-            unsigned* const img_labels_row00 = img_labels_.ptr<unsigned>(0);
+            unsigned* const img_labels_row00 = this->img_labels_.template ptr<unsigned>(0);
             goto fl_tree_0;
 #include "labeling_PREDpp_2021_fl_forest.inc.h"
         }
@@ -82,12 +84,12 @@ public:
             int c = -1;
             // Get rows pointer
     // Row pointers for the input image 
-            const unsigned char* const img_row00 = img_.ptr<unsigned char>(r);
-            const unsigned char* const img_row11 = (unsigned char *)(((char *)img_row00) + img_.step.p[0] * -1);
+            const unsigned char* const img_row00 = this->img_.template ptr<unsigned char>(r);
+            const unsigned char* const img_row11 = (unsigned char *)(((char *)img_row00) + this->img_.step.p[0] * -1);
 
             // Row pointers for the output image 
-            unsigned* const img_labels_row00 = img_labels_.ptr<unsigned>(r);
-            unsigned* const img_labels_row11 = (unsigned *)(((char *)img_labels_row00) + img_labels_.step.p[0] * -1);
+            unsigned* const img_labels_row00 = this->img_labels_.template ptr<unsigned>(r);
+            unsigned* const img_labels_row11 = (unsigned *)(((char *)img_labels_row00) + this->img_labels_.step.p[0] * -1);
             goto cl_tree_0;
 #include "labeling_PREDpp_2021_cl_forest.inc.h"
 
@@ -108,38 +110,44 @@ public:
 #undef CONDITION_R
 
     // Second scan
-        n_labels_ = LabelsSolver::Flatten();
+        this->n_labels_ = ET.template Flatten<ConfFeatures>(this->features);
 
-        for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
-            unsigned int *b = img_labels_.ptr<unsigned int>(r_i);
-            unsigned int *e = b + img_labels_.cols;
+        for (int r_i = 0; r_i < this->img_labels_.rows; ++r_i) {
+            unsigned int *b = this->img_labels_.template ptr<unsigned int>(r_i);
+            unsigned int *e = b + this->img_labels_.cols;
             for (; b != e; ++b) {
-                *b = LabelsSolver::GetLabel(*b);
+                *b = ET.GetLabel(*b);
             }
         }
 
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
     }
+
 
     void PerformLabelingWithSteps()
     {
-        double alloc_timing = Alloc();
+	Labeling::StepsDuration elapsed;
+	elapsed.Init();
 
-        perf_.start();
-        FirstScan();
-        perf_.stop();
-        perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+	
+	double alloc_timing = Alloc();
 
-        perf_.start();
-        SecondScan();
-        perf_.stop();
-        perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+	MEASURE_STEP_TIME(FirstScan(), StepType::FIRST_SCAN, this->perf_, elapsed,
+			  this->samplers, size);
+
+        SecondScan(elapsed);
 
         perf_.start();
         Dealloc();
         perf_.stop();
         perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
 
+	elapsed.CalcDerivedTime();
+	elapsed.StoreAll(this->perf_);
+	this->samplers.CalcDerived();
     }
 
 
@@ -147,34 +155,34 @@ private:
     double Alloc()
     {
         // Memory allocation of the labels solver
-        double ls_t = LabelsSolver::Alloc(UPPER_BOUND_8_CONNECTIVITY, perf_);
+        double ls_t = ET.Alloc(UPPER_BOUND_8_CONNECTIVITY, this->perf_);
         // Memory allocation for the output image
-        perf_.start();
-        img_labels_ = cv::Mat1i(img_.size());
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double t = perf_.last();
-        perf_.start();
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-        perf_.stop();
-        double ma_t = t - perf_.last();
+        this->perf_.start();
+        this->img_labels_ = cv::Mat1i(this->img_.size());
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+        this->perf_.stop();
+        double t = this->perf_.last();
+        this->perf_.start();
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+        this->perf_.stop();
+        double ma_t = t - this->perf_.last();
         // Return total time
         return ls_t + ma_t;
     }
 
     void Dealloc()
     {
-        LabelsSolver::Dealloc();
+        ET.Dealloc();
         // No free for img_labels_ because it is required at the end of the algorithm 
     }
     void FirstScan()
     {
-        memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart); // Initialization
-        LabelsSolver::Setup();
+        memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart); // Initialization
+        ET.Setup();
 
         // First Scan
-        int w(img_.cols);
-        int h(img_.rows);
+        int w(this->img_.cols);
+        int h(this->img_.rows);
 
 #define CONDITION_P img_row11[c - 1] > 0
 #define CONDITION_Q img_row11[c] > 0
@@ -187,7 +195,7 @@ private:
         // Action 1: nothing
 #define ACTION_1 
 // Action 2: x<-newlabel
-#define ACTION_2 img_labels_row00[c] = LabelsSolver::NewLabel();
+#define ACTION_2 img_labels_row00[c] = ET.NewLabel();
 // Action 3: x<-p
 #define ACTION_3 img_labels_row00[c] = img_labels_row11[c - 1];
 // Action 4: x<-q
@@ -195,11 +203,11 @@ private:
 // Action 5: x<-r
 #define ACTION_5 img_labels_row00[c] = img_labels_row11[c + 1];
 // Action 6: x<-p+r
-#define ACTION_6 img_labels_row00[c] = LabelsSolver::Merge(img_labels_row11[c + 1], img_labels_row11[c - 1]);
+#define ACTION_6 img_labels_row00[c] = ET.Merge(img_labels_row11[c + 1], img_labels_row11[c - 1]);
 // Action 7: x<-s
 #define ACTION_7 img_labels_row00[c] = img_labels_row00[c - 1];
 // Action 8: x<-r+s
-#define ACTION_8 img_labels_row00[c] = LabelsSolver::Merge(img_labels_row00[c - 1], img_labels_row11[c + 1]);
+#define ACTION_8 img_labels_row00[c] = ET.Merge(img_labels_row00[c - 1], img_labels_row11[c + 1]);
 
 #define COLS w
 
@@ -207,22 +215,22 @@ private:
             int c = -1;
             // Get rows pointer
             // Row pointers for the input image 
-            const unsigned char* const img_row00 = img_.ptr<unsigned char>(0);
+            const unsigned char* const img_row00 = this->img_.template ptr<unsigned char>(0);
 
             // Row pointers for the output image 
-            unsigned* const img_labels_row00 = img_labels_.ptr<unsigned>(0);
+            unsigned* const img_labels_row00 = this->img_labels_.template ptr<unsigned>(0);
             goto fl_tree_0;
 #include "labeling_PREDpp_2021_fl_forest.inc.h"
         }
 
         for (int r = 1; r < h; ++r) {
             // Row pointers for the input image 
-            const unsigned char* const img_row00 = img_.ptr<unsigned char>(r);
-            const unsigned char* const img_row11 = (unsigned char *)(((char *)img_row00) + img_.step.p[0] * -1);
+            const unsigned char* const img_row00 = this->img_.template ptr<unsigned char>(r);
+            const unsigned char* const img_row11 = (unsigned char *)(((char *)img_row00) + this->img_.step.p[0] * -1);
 
             // Row pointers for the output image 
-            unsigned* const img_labels_row00 = img_labels_.ptr<unsigned>(r);
-            unsigned* const img_labels_row11 = (unsigned *)(((char *)img_labels_row00) + img_labels_.step.p[0] * -1);
+            unsigned* const img_labels_row00 = this->img_labels_.template ptr<unsigned>(r);
+            unsigned* const img_labels_row11 = (unsigned *)(((char *)img_labels_row00) + this->img_labels_.step.p[0] * -1);
             int c = -1;
             goto cl_tree_0;
 #include "labeling_PREDpp_2021_cl_forest.inc.h"
@@ -243,18 +251,25 @@ private:
 #undef CONDITION_Q
 #undef CONDITION_R
     }
-    void SecondScan()
+    void SecondScan(Labeling::StepsDuration& elapsed)
     {
-        // Second scan
-        n_labels_ = LabelsSolver::Flatten();
-
-        for (int r_i = 0; r_i < img_labels_.rows; ++r_i) {
-            unsigned int *b = img_labels_.ptr<unsigned int>(r_i);
-            unsigned int *e = b + img_labels_.cols;
-            for (; b != e; ++b) {
-                *b = LabelsSolver::GetLabel(*b);
-            }
-        }
+	uint32_t height = this->img_.size.p[0];
+	uint32_t width = this->img_.size.p[1];
+	uint32_t size = height * width;
+	
+	// Second scan
+	MEASURE_STEP_TIME(
+	    this->n_labels_ = ET.template Flatten<ConfFeatures>(this->features),
+	    StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
+	
+	MEASURE_STEP_TIME(
+	    for (int r_i = 0; r_i < this->img_labels_.rows; ++r_i) {
+		unsigned int *b = this->img_labels_.template ptr<unsigned int>(r_i);
+		unsigned int *e = b + this->img_labels_.cols;
+		for (; b != e; ++b) {
+		    *b = ET.GetLabel(*b);
+		}
+	    }, StepType::RELABELING, this->perf_, elapsed, this->samplers, size);
     }
 };
 

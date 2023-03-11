@@ -18,6 +18,7 @@
 #include "labeling_algorithms.h"
 #include "labels_solver.h"
 #include "memory_tester.h"
+#include "calc_features.hpp"
 
 //Conditions:
 #define CONDITION_KB c > 0 && r > 0 && s > 0 && img_slice11_row11[c - 1] > 0
@@ -46,72 +47,75 @@
 //Actions:
 #include "labeling3D_EPDT_22c_action_def.inc.h"
 
-template <typename LabelsSolver>
-class EPDT_3D_22c : public Labeling3D<Connectivity3D::CONN_26> {
+template <typename LabelsSolver, bool DoRelabeling = true, typename ConfFeatures = ConfFeatures3DNone>
+class EPDT_3D_22c : public Labeling3D<Connectivity3D::CONN_26, ConfFeatures> {
+protected:
+    LabelsSolver ET;
 public:
 	EPDT_3D_22c() {}
 
+    bool UseRelabeling() const override {
+	return DoRelabeling;
+    }
+    
 	void PerformLabeling()
 	{
-		img_labels_.create(3, img_.size.p, CV_32SC1);
-
-		LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY); // Memory allocation of the labels solver
-		LabelsSolver::Setup(); // Labels solver initialization
+		ET.Setup(); // Labels solver initialization
 
 		// First scan
-		unsigned int d = img_.size.p[0];
-		unsigned int h = img_.size.p[1];
-		unsigned int w = img_.size.p[2];
+		unsigned int d = this->img_.size.p[0];
+		unsigned int h = this->img_.size.p[1];
+		unsigned int w = this->img_.size.p[2];
 
 		for (unsigned int s = 0; s < d; s += 1) {
 
 			for (unsigned int r = 0; r < h; r += 1) {
 
-				const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+				const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
 				// T, W slice
-				//const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * -2);
-				const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * -1);
+				//const unsigned char* const img_slice00_row12 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * -2);
+				const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * -1);
 				// img_slice00_row00 defined above
-				//const unsigned char* const img_slice00_row01 = (unsigned char *)(((char *)img_slice00_row00) + img_.step.p[1] * 1);
+				//const unsigned char* const img_slice00_row01 = (unsigned char *)(((char *)img_slice00_row00) + this->img_.step.p[1] * 1);
 
 				// K, N, Q slice
-				//const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
-				const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-				const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-				const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
-				//const unsigned char* const img_slice11_row02 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 2);
-				//const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 3);
+				//const unsigned char* const img_slice11_row12 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
+				const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+				const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+				const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
+				//const unsigned char* const img_slice11_row02 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 2);
+				//const unsigned char* const img_slice11_row03 = (unsigned char *)(((char *)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 3);
 
 
 				// Row pointers for the output image (current slice)
-				unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
+				unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
 				// T, W slice
-				//unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -2);
-				unsigned* const img_labels_slice00_row11 = (unsigned*)(((char*)img_labels_slice00_row00) + img_labels_.step.p[1] * -1);
+				//unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -2);
+				unsigned* const img_labels_slice00_row11 = (unsigned*)(((char*)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -1);
 				// img_labels_slice00_row00 defined above
-				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * 1);
+				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * 1);
 
 				// K, N, Q slice
-				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -2);
-				unsigned* const img_labels_slice11_row11 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -1);
-				unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-				unsigned* const img_labels_slice11_row01 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 1);
-				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 2);
-				//unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 3);
+				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -2);
+				unsigned* const img_labels_slice11_row11 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -1);
+				unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+				unsigned* const img_labels_slice11_row01 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 1);
+				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 2);
+				//unsigned* const img_labels_slice11_row03 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 3);
 
 				// V -- old -- V
 				//// Row pointers for the output image (current slice)
-				//unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
-				//unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -2);
-				//unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * -1);
-				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + img_labels_.step.p[1] * 1);
+				//unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
+				//unsigned* const img_labels_slice00_row12 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -2);
+				//unsigned* const img_labels_slice00_row11 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -1);
+				//unsigned* const img_labels_slice00_row01 = (unsigned *)(((char *)img_labels_slice00_row00) + this->img_labels_.step.p[1] * 1);
 
 				//// Row pointers for the output image (previous slice)
-				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -2);
-				//unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -1);
-				//unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-				//unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 1);
-				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 2);
+				//unsigned* const img_labels_slice11_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -2);
+				//unsigned* const img_labels_slice11_row11 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -1);
+				//unsigned* const img_labels_slice11_row00 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+				//unsigned* const img_labels_slice11_row01 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 1);
+				//unsigned* const img_labels_slice11_row02 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 2);
 				for (unsigned int c = 0; c < w; c += 2) {
 					if (!((CONDITION_XA) || (CONDITION_XB))) {
 						ACTION_0;
@@ -122,17 +126,18 @@ public:
 		} // Planes cycle end
 
 		// Second scan
-		LabelsSolver::Flatten();
-		//unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -2);
+		this->n_labels_ = ET.Flatten();
+		
+		//unsigned* const img_labels_slice12_row12 = (unsigned *)(((char *)img_labels_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -2);
 
-		//char * img_labels_row = reinterpret_cast<char*>(img_labels_.data);
-		//unsigned char * img_row = reinterpret_cast<unsigned char*>(img_.data);
+		//char * img_labels_row = reinterpret_cast<char*>(this->img_labels_.data);
+		//unsigned char * img_row = reinterpret_cast<unsigned char*>(this->img_.data);
 
-		//const unsigned char* const img_row = img_.ptr<unsigned char>(0);
-		//unsigned* const img_labels_row = img_labels_.ptr<unsigned>(0);
+		//const unsigned char* const img_row = this->img_.template ptr<unsigned char>(0);
+		//unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(0);
 
-		//const unsigned char* const img_row = img_.ptr<unsigned char>();
-		//int* const img_labels_row = img_labels_.ptr<int>();
+		//const unsigned char* const img_row = this->img_.template ptr<unsigned char>();
+		//int* const img_labels_row = this->img_labels_.template ptr<int>();
 
 		// NEW VERSION BELOW, OLD IN labeling3D_EPDT_19c.h
 		int rows = h;
@@ -143,14 +148,14 @@ public:
 			int r = 0;
 			for (; r < rows; r += 1) {
 				// Get rows pointer
-				const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
+				const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
 
-				unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
+				unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
 				int c = 0;
 				for (; c < e_cols; c += 2) {
 					int iLabel = img_labels_row[c];
 					if (iLabel > 0) {
-						iLabel = LabelsSolver::GetLabel(iLabel);
+						iLabel = ET.GetLabel(iLabel);
 						if (img_row[c] > 0)
 							img_labels_row[c] = iLabel;
 						else
@@ -169,7 +174,7 @@ public:
 				if (o_cols) {
 					int iLabel = img_labels_row[c];
 					if (iLabel > 0) {
-						iLabel = LabelsSolver::GetLabel(iLabel);
+						iLabel = ET.GetLabel(iLabel);
 						if (img_row[c] > 0)
 							img_labels_row[c] = iLabel;
 						else
@@ -181,27 +186,50 @@ public:
 				}
 			}
 		}
-		LabelsSolver::Dealloc(); // Memory deallocation of the labels solver
-
+		
+		CalcFeatures3DPixels::CalcFeatures<LabelsSolver, ConfFeatures, DoRelabeling>(
+		    this->img_labels_, ET, this->features);
+		
+		
 	}
 
 	void PerformLabelingWithSteps() {
 		double alloc_timing = Alloc();
 
-		perf_.start();
-		FirstScan();
-		perf_.stop();
-		perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
+		int32_t depth = this->img_.size.p[0];
+		int32_t height = this->img_.size.p[1];
+		int32_t width = this->img_.size.p[2];
+		int32_t size = depth * height * width;
 
-		perf_.start();
-		SecondScan();
-		perf_.stop();
-		perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
+		Labeling::StepsDuration elapsed;
+		elapsed.Init();
+		
 
-		perf_.start();
+		MEASURE_STEP_TIME(FirstScan(),
+				  StepType::FIRST_SCAN, this->perf_, elapsed, this->samplers, size);
+		
+		SecondScan(elapsed);
+
+		
+		this->perf_.start();
+		this->samplers.Start();
+		//CalcFeatures3DBlock_1x1x2::CalcFeatures<LabelsSolver, ConfFeatures, DoRelabeling>(
+		//    this->img_, this->img_labels_, ET, this->features);
+		CalcFeatures3DPixels::CalcFeatures<LabelsSolver, ConfFeatures>(this->img_labels_, ET, this->features);
+		this->samplers.Stop();
+		this->perf_.stop();
+		this->samplers.Store(StepType::FEATURES, size);
+		elapsed.duration[StepType::FEATURES] = this->perf_.last();
+
+		
+		this->perf_.start();
 		Dealloc();
-		perf_.stop();
-		perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
+		this->perf_.stop();
+		this->perf_.store(Step(StepType::ALLOC_DEALLOC), this->perf_.last() + alloc_timing);
+
+		elapsed.CalcDerivedTime();
+		elapsed.StoreAll(this->perf_);
+		this->samplers.CalcDerived();
 	}
 
 	void PerformLabelingMem(std::vector<uint64_t>& accesses) {
@@ -259,17 +287,17 @@ public:
 #include "labeling3D_EPDT_22c_action_def_mem.inc.h"
 		}
 
-		LabelsSolver::MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
+		ET.MemAlloc(UPPER_BOUND_26_CONNECTIVITY); // Equivalence solver
 
-		MemVol<unsigned char> img(img_);
-		MemVol<int> img_labels(img_.size.p);
+		MemVol<unsigned char> img(this->img_);
+		MemVol<int> img_labels(this->img_.size.p);
 
-		LabelsSolver::MemSetup();
+		ET.MemSetup();
 
 		// First scan
-		unsigned int d = img_.size.p[0];
-		unsigned int h = img_.size.p[1];
-		unsigned int w = img_.size.p[2];
+		unsigned int d = this->img_.size.p[0];
+		unsigned int h = this->img_.size.p[1];
+		unsigned int w = this->img_.size.p[2];
 
 		for (unsigned int s = 0; s < d; s += 1) {
 			for (unsigned int r = 0; r < h; r += 1) {
@@ -283,7 +311,7 @@ public:
 		} // Planes cycle end
 
 		// Second scan
-		LabelsSolver::MemFlatten();
+		ET.MemFlatten();
 
 		// NEW VERSION BELOW, OLD IN labeling3D_EPDT_19c.h
 		int rows = h;
@@ -297,7 +325,7 @@ public:
 				for (; c < e_cols; c += 2) {					
 					int iLabel = img_labels(s, r, c);
 					if (iLabel > 0) {
-						iLabel = LabelsSolver::MemGetLabel(iLabel);
+						iLabel = ET.MemGetLabel(iLabel);
 						if (img(s, r, c) > 0)
 							img_labels(s, r, c) = iLabel;
 						else
@@ -316,7 +344,7 @@ public:
 				if (o_cols) {
 					int iLabel = img_labels(s, r, c);
 					if (iLabel > 0) {	// Useless controls
-						iLabel = LabelsSolver::MemGetLabel(iLabel);
+						iLabel = ET.MemGetLabel(iLabel);
 						if (img(s, r, c) > 0)
 							img_labels(s, r, c) = iLabel;
 						else
@@ -334,11 +362,11 @@ public:
 
 		accesses[MD_BINARY_MAT] = (unsigned long)img.GetTotalAccesses();
 		accesses[MD_LABELED_MAT] = (unsigned long)img_labels.GetTotalAccesses();
-		accesses[MD_EQUIVALENCE_VEC] = (unsigned long)LabelsSolver::MemTotalAccesses();
+		accesses[MD_EQUIVALENCE_VEC] = (unsigned long)ET.MemTotalAccesses();
 
-		img_labels_ = img_labels.GetImage();
+		this->img_labels_ = img_labels.GetImage();
 
-		LabelsSolver::MemDealloc(); // Memory deallocation of the labels solver
+		ET.MemDealloc(); // Memory deallocation of the labels solver
 
 		{
 #undef CONDITION_KB
@@ -398,55 +426,59 @@ public:
 private:
 	double Alloc()
 	{
-		// Memory allocation of the labels solver
-		double ls_t = LabelsSolver::Alloc(UPPER_BOUND_26_CONNECTIVITY, perf_);
+	    this->samplers.Reset();
+	    // Memory allocation of the labels solver
+		double ls_t = ET.Alloc(UPPER_BOUND_26_CONNECTIVITY, this->perf_);
 		// Memory allocation for the output image
-		perf_.start();
-		img_labels_.create(3, img_.size.p, CV_32SC1);
-		memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-		perf_.stop();
-		double t = perf_.last();
-		perf_.start();
-		memset(img_labels_.data, 0, img_labels_.dataend - img_labels_.datastart);
-		perf_.stop();
-		double ma_t = t - perf_.last();
+		this->perf_.start();
+		this->img_labels_.create(3, this->img_.size.p);		
+		memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+		this->features.template Alloc<ConfFeatures>(UPPER_BOUND_26_CONNECTIVITY);
+		this->perf_.stop();
+		double t = this->perf_.last();
+		
+		this->perf_.start();
+		memset(this->img_labels_.data, 0, this->img_labels_.dataend - this->img_labels_.datastart);
+		this->features.template Touch<ConfFeatures>();
+		this->perf_.stop();
+		double ma_t = t - this->perf_.last();
 		// Return total time
 		return ls_t + ma_t;
 	}
 	void Dealloc() {
-		LabelsSolver::Dealloc();
+	    ET.Dealloc();
 		// No free for img_labels_ because it is required at the end of the algorithm 
 	}
 	void FirstScan() {
-		LabelsSolver::Setup(); // Labels solver initialization
+		ET.Setup(); // Labels solver initialization
 
 		// First scan
-		unsigned int d = img_.size.p[0];
-		unsigned int h = img_.size.p[1];
-		unsigned int w = img_.size.p[2];
+		unsigned int d = this->img_.size.p[0];
+		unsigned int h = this->img_.size.p[1];
+		unsigned int w = this->img_.size.p[2];
 
 		for (unsigned int s = 0; s < d; s += 1) {
 			for (unsigned int r = 0; r < h; r += 1) {
 
-				const unsigned char* const img_slice00_row00 = img_.ptr<unsigned char>(s, r);
+				const unsigned char* const img_slice00_row00 = this->img_.template ptr<unsigned char>(s, r);
 
 				// T, W slice
-				const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + img_.step.p[1] * -1);
+				const unsigned char* const img_slice00_row11 = (unsigned char*)(((char*)img_slice00_row00) + this->img_.step.p[1] * -1);
 
 				// K, N, Q slice
-				const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * -1);
-				const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 0);
-				const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - img_.step.p[0] + img_.step.p[1] * 1);
+				const unsigned char* const img_slice11_row11 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * -1);
+				const unsigned char* const img_slice11_row00 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 0);
+				const unsigned char* const img_slice11_row01 = (unsigned char*)(((char*)img_slice00_row00) - this->img_.step.p[0] + this->img_.step.p[1] * 1);
 
 				// Row pointers for the output image (current slice)
-				unsigned* const img_labels_slice00_row00 = img_labels_.ptr<unsigned>(s, r);
+				unsigned* const img_labels_slice00_row00 = this->img_labels_.template ptr<unsigned>(s, r);
 				// T, W slice
-				unsigned* const img_labels_slice00_row11 = (unsigned*)(((char*)img_labels_slice00_row00) + img_labels_.step.p[1] * -1);
+				unsigned* const img_labels_slice00_row11 = (unsigned*)(((char*)img_labels_slice00_row00) + this->img_labels_.step.p[1] * -1);
 
 				// K, N, Q slice
-				unsigned* const img_labels_slice11_row11 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * -1);
-				unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 0);
-				unsigned* const img_labels_slice11_row01 = (unsigned*)(((char*)img_labels_slice00_row00) - img_labels_.step.p[0] + img_labels_.step.p[1] * 1);
+				unsigned* const img_labels_slice11_row11 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * -1);
+				unsigned* const img_labels_slice11_row00 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 0);
+				unsigned* const img_labels_slice11_row01 = (unsigned*)(((char*)img_labels_slice00_row00) - this->img_labels_.step.p[0] + this->img_labels_.step.p[1] * 1);
 
 				for (unsigned int c = 0; c < w; c += 2) {
 					if (!((CONDITION_XA) || (CONDITION_XB))) {
@@ -458,63 +490,70 @@ private:
 		} // Planes cycle end
 	}
 
-	void SecondScan() {
-		// Second scan
-		LabelsSolver::Flatten();
+    void SecondScan(Labeling::StepsDuration& elapsed) {
+	    // Second scan
 
-		unsigned int d = img_.size.p[0];
-		unsigned int h = img_.size.p[1];
-		unsigned int w = img_.size.p[2];
 
-		//const unsigned char* const img_row = img_.ptr<unsigned char>();
-		//int* const img_labels_row = img_labels_.ptr<int>();
+	    unsigned int d = this->img_.size.p[0];
+	    unsigned int h = this->img_.size.p[1];
+	    unsigned int w = this->img_.size.p[2];
+	    unsigned size = d * h * w;
 
-		// NEW VERSION BELOW, OLD COMMENTED IN PerformLabeling
-		int rows = h;
-		int e_cols = w & 0xfffffffe;
-		bool o_cols = w % 2 == 1;
+	    MEASURE_STEP_TIME(this->n_labels_ = ET.Flatten(),
+			      StepType::TRANSITIVE_CLOSURE, this->perf_, elapsed, this->samplers, size);
+	    
+	    //const unsigned char* const img_row = this->img_.template ptr<unsigned char>();
+	    //int* const img_labels_row = this->img_labels_.template ptr<int>();
 
-		for (unsigned s = 0; s < d; s++) {
+	    // NEW VERSION BELOW, OLD COMMENTED IN PerformLabeling
+	    MEASURE_STEP_TIME(
+		if (DoRelabeling) {
+		    int rows = h;
+		    int e_cols = w & 0xfffffffe;
+		    bool o_cols = w % 2 == 1;
+
+		    for (unsigned s = 0; s < d; s++) {
 			int r = 0;
 			for (; r < rows; r += 1) {
-				// Get rows pointer
-				const unsigned char* const img_row = img_.ptr<unsigned char>(s, r);
-				unsigned* const img_labels_row = img_labels_.ptr<unsigned>(s, r);
-				int c = 0;
-				for (; c < e_cols; c += 2) {
-					int iLabel = img_labels_row[c];
-					if (iLabel > 0) {
-						iLabel = LabelsSolver::GetLabel(iLabel);
-						if (img_row[c] > 0)
-							img_labels_row[c] = iLabel;
-						else
-							img_labels_row[c] = 0;
-						if (img_row[c + 1] > 0)
-							img_labels_row[c + 1] = iLabel;
-						else
-							img_labels_row[c + 1] = 0;
-					}
-					else {
-						img_labels_row[c] = 0;
-						img_labels_row[c + 1] = 0;
-					}
+			    // Get rows pointer
+			    const unsigned char* const img_row = this->img_.template ptr<unsigned char>(s, r);
+			    unsigned* const img_labels_row = this->img_labels_.template ptr<unsigned>(s, r);
+			    int c = 0;
+			    for (; c < e_cols; c += 2) {
+				int iLabel = img_labels_row[c];
+				if (iLabel > 0) {
+				    iLabel = ET.GetLabel(iLabel);
+				    if (img_row[c] > 0)
+					img_labels_row[c] = iLabel;
+				    else
+					img_labels_row[c] = 0;
+				    if (img_row[c + 1] > 0)
+					img_labels_row[c + 1] = iLabel;
+				    else
+					img_labels_row[c + 1] = 0;
 				}
-				// Last column if the number of columns is odd
-				if (o_cols) {
-					int iLabel = img_labels_row[c];
-					if (iLabel > 0) {
-						iLabel = LabelsSolver::GetLabel(iLabel);
-						if (img_row[c] > 0)
-							img_labels_row[c] = iLabel;
-						else
-							img_labels_row[c] = 0;
-					}
-					else {
-						img_labels_row[c] = 0;
-					}
+				else {
+				    img_labels_row[c] = 0;
+				    img_labels_row[c + 1] = 0;
 				}
+			    }
+			    // Last column if the number of columns is odd
+			    if (o_cols) {
+				int iLabel = img_labels_row[c];
+				if (iLabel > 0) { 
+				    iLabel = ET.GetLabel(iLabel);
+				    if (img_row[c] > 0) // Is this check needed ?
+					img_labels_row[c] = iLabel;
+				    else
+					img_labels_row[c] = 0;
+				}
+				else {
+				    img_labels_row[c] = 0;
+				}
+			    }
 			}
-		}
+		    }
+		}, StepType::RELABELING, this->perf_, elapsed, this->samplers, size);
 	}
 };
 
