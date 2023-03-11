@@ -1,7 +1,72 @@
+# YACCLAB - LSL3D
+
+## Instalation
+
+```
+git clone --recursive https://gitlab.lip6.fr/maurice/yacclab.git
+```
+
+### Dependencies
+
+Required: `opencv`
+Optional dependencies: 
+- Our paper: `papi`, `perf`
+- YACCLAB (not used for LSL3D): `openmp`, `cuda`
+
+## Compilation
+
+```
+mkdir build/
+cd build/
+cmake .. -DCMAKE_BUILD_TYPE=Release -DYACCLAB_ENABLE_3D=1 -DYACCLAB_ENABLE_PAPI=0 -DYACCLAB_ENABLE_PERF=0 -DCMAKE_CXX_FLAGS="-Wall -std=c++14 -DMEASURE_EACH_STEP=1 -march=native -O3 -fstrict-aliasing -DLSL_SIMD_SSE-DYACCLAB_ENABLE_EPDT_19C=0 -DYACCLAB_ENABLE_22C=1 -DYACCLAB_ENABLE_EPDT_26C=0" 
+```
+
+Alternately, build scripts are available in `scripts/`
+
+Datasets can be downloaded by adding the `YACCLAB_DOWNLOAD_DATASET=1`  and `-DYACCLAB_DOWNLOAD_DATASET_3D=1` options.
+
+### Options
+
+Options from base YACCLAB can be found at:
+
+Note: `YACCLAB_ENABLE_EPDT_22C` and `YACCLAB_ENABLE_EPDT_26C` considerably increase compilation (~30 minutes for EPDT 22C, > 1 hour for the latter). This can also compilation errors on low-end machine if not enough memory is available (especially with EPDT 26C)
+
+On top of these, the following options have been added:
+
+| Option                | Meaning                                                                                  |
+|-----------------------|------------------------------------------------------------------------------------------|
+| `YACCLAB_ENABLE_PAPI` | Use PAPI library to measure hardware performance metrics (branches, caches, cycles, ...) |
+| `YACCLAB_ENABLE_PERF` | Use Linux' perf module to measure hardware performance metrics (Linux only)              |
+	
+`YACCLAB_ENABLE_PAPI` and `YACCLAB_ENABLE_PERF` are mutually exclusive. At the time of this writing, `YACCLAB_ENABLE_PAPI` is recommended over `YACCBAL_ENABLE_PERF`. All metrics in the LSL3D article have been produced using the former option.
+
+
+A few other LSL3D-specific options can be specified through C++ flags:
+
+| Flag                  | Meaning                                                                                    |
+|-----------------------|--------------------------------------------------------------------------------------------|
+| `-DMEASURE_EACH_STEP` | Measure RLE/Unification time separately. If disabled, they are counting under 'First Scan' |
+| `-DUSE_LSL_SIMD_SSE`  | Enable SSE LSL algorithms                                                                  |
+
+
+## Execution
+
+YACCLAB uses the `config.yaml` file format to specifify benchmarks (algorithm + datasets). This file should be placed in the current working directory where `YACCLAB` is executed (e.g. inside `build/`, alongside the `YACCLAB` executable)
+
+Existing configurations can be found in the `doc/` folder.
+
+From within `build/`
+```
+./YACCLAB
+```
+
+
+
+
 # Yet Another Connected Components Labeling Benchmark
 [![release](https://img.shields.io/github/v/release/prittt/YACCLAB)](https://github.com/prittt/YACCLAB/releases/latest/)
 [![license](https://img.shields.io/github/license/prittt/YACCLAB)](https://github.com/prittt/YACCLAB/blob/master/LICENSE)<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![contributors](https://img.shields.io/badge/all_contributors-8-orange.svg?style=flat)](#contributors)
+[![contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat)](#contributors)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 
@@ -98,7 +163,7 @@ Notice that 8-connectivity is always used in the project.
 <p align="justify">
 To correctly install and run YACCLAB following packages, libraries and utilities are needed:
 
-- CMake 3.18 or higher (https://cmake.org);
+- CMake 3.13 or higher (https://cmake.org);
 - OpenCV 3.0 or higher (http://opencv.org), required packages are `core`, `imgcodecs`, `imgproc`;
 - Gnuplot (http://www.gnuplot.info/);
 - One of your favourite IDE/compiler with C++14 support.
@@ -141,13 +206,12 @@ Notes for gnuplot:
 
 ## How to include a YACCLAB algorithm into your own project?
 
-<p align="justify">If your project requires a Connected Components Labeling algorithm and you are not interested in the whole YACCLAB benchmark you can use the <i>connectedComponent</i> function of the OpenCV library which implements the BBDT and SAUF algorithms since version 3.2., Spaghetti Labeling algorithm and BKE (for GPU only) since version 4.6.</p>
+<p align="justify">If your project requires a Connected Components Labeling algorithm and you are not interested in the whole YACCLAB benchmark you can use the <i>connectedComponent</i> function of the OpenCV library which implements the BBDT and SAUF algorithms since version 3.2.</p>
 <p align="justify">Anyway, when the <i>connectedComponents</i> function is called, a lot of additional code will be executed together with the core function. If your project requires the best performance you can include an algorithm implemented in YACCLAB adding the following files to your project:</p>
 <ol>
   <li><i>labeling_algorithms.h</i> and <i>labeling_algorithms.cc</i> which define the base class from which every algorithm derives from;</li>
-  <li><i>yacclab_tensor.h</i>, <i>yacclab_tensor.cc</i> which define input and output data tensors;</li>
   <li><i>label_solver.h</i> and <i>label_solver.cc</i> which cointain the implementation of labels solving algorithms;</li>
-  <li><i>memory_tester.h</i>, <i>performance_evaluator.h</i>, <i>volume_util.h</i>, <i>volume_util.cc</i>, <i>utilities.h</i>, <i>utilities.cc</i>, <i>system_info.h</i>, <i>system_info.cc</i>, <i>check_labeling.h</i>, <i>check_labeling.cc</i>, <i>file_manager.h</i>, <i>file_manager.cc</i>, <i>stream_demultiplexer.h</i>, <i>config_data.h</i>, <i>register.h</i>, <i>yacclab_test.h</i>, <i>progress_bar.h</i>, <i>cuda_mat3.hpp</i>, <i>cuda_types3.hpp</i>, and <i>cuda_mat3.inl.hpp</i> just to make things work without changing the code;</li>
+  <li><i>memory_tester.h</i> and <i>performance_evaluator.h</i> just to make things work without changing the code;</li>
   <li><i>headers</i> and <i>sources</i> files of the required algorithm/s. The association between algorithms and headers/sources files is reported in the tables below.</li>
 </ol>  
 
@@ -345,7 +409,7 @@ Notes for gnuplot:
 <a name="III"><sup>III</sup></a> with RLE compression. </br>
 <a name="IV"><sup>IV</sup></a> only on TTA and UF. </br>
 <a name="V"><sup>V</sup></a> it only copies the pixels from the input image to the output one simply defining a lower bound limit for the execution time of CCL algorithms on a given machine and dataset.</br>
-<a name="VI"><sup>VI</sup></a> EPDT_19c and EPDT_22c algorithms are based on very big decision trees that translate to many lines of C++ code. They may thus noticeably increase the build time. For this reason, a special flag (`YACCLAB_ENABLE_EPDT_ALGOS`) to enable/disable such algorithms is provided in the CMake file. By default the flag is OFF.</br>
+<a name="VI"><sup>VI</sup></a> EPDT_19c and EPDT_22c algorithms are based on very big decision trees that translate in many lines of C++ code. They may thus noticeably increase the build time. For this reason, a special flag (`YACCLAB_ENABLE_EPDT_ALGOS`) to enable/disable such algorithms is provided in the CMake file. By default the flag is OFF.</br>
 <a name="VII"><sup>VII</sup></a> CCL algorithm for images in bitonal (1 bit per pixel) format. When applied to these algorithms, the <i>average</i> tests also consider the time for 1 byte to 1 bit per pixel conversion. On the other hand, when performing <i>average with steps</i> tests conversion time is ignored.
 
 ### 2D/3D GPU Algorithms
@@ -363,7 +427,7 @@ Notes for gnuplot:
     <td align="center">V. Oliveira,</br>R. Lotufo <a href="#UF">[18]</a></td>
     <td align="center">2010</td>
     <td align="center">UF</td>
-    <td align="center"><i>labeling_oliveira_2010.cu</i></td>
+    <td align="center"><i>labeling_CUDA_UF.cu</i></td>
     <td align="center">2D and 3D</td>
   </tr>
   <tr>
@@ -371,63 +435,7 @@ Notes for gnuplot:
     <td align="center">O. Kalentev,</br>A. Rai,</br>S. Kemnitz,</br>R. Schneider <a href="#OLE">[19]</a></td>
     <td align="center">2011</td>
     <td align="center">OLE</td>
-    <td align="center"><i>labeling_kalentev_2011.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-    <tr>
-    <td align="center">Block-run-based</td>
-    <td align="center">P. Chen,</br>H.L. Zhao,</br>C. Tao,</br>H.S. Sang <a href="#BRB">[25]</a></td>
-    <td align="center">2011</td>
-    <td align="center">BRB</td>
-    <td align="center"><i>labeling_chen_2011.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Stava</td>
-    <td align="center">O. Stava,</br>B. Benes <a href="#STAVA">[38]</a></td>
-    <td align="center">2011</td>
-    <td align="center">STAVA</td>
-    <td align="center"><i>labeling_stava_2011.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Rasmusson</td>
-    <td align="center">A. Rasmusson,</br>T.S. Sørensen,</br>G. Ziegler <a href="#RASMUSSON">[37]</a></td>
-    <td align="center">2013</td>
-    <td align="center">RASMUSSON</td>
-    <td align="center"><i>labeling_rasmusson_2013.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Accelerated CCL</td>
-    <td align="center">F. N. Paravecino,</br>D. Kaeli <a href="#ACCL">[34]</a></td>
-    <td align="center">2014</td>
-    <td align="center">ACCL</td>
-    <td align="center"><i>labeling_paravecino_2014.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">8-Directional Label Selection</td>
-    <td align="center">Y. Soh,</br>H. Ashraf,</br>Y. Hae,</br>I. Kim <a href="#8DLS">[36]</a></td>
-    <td align="center">2014</td>
-    <td align="center">DLS</td>
-    <td align="center"><i>labeling_soh_2014_8DLS.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Modified 8-Directional Label Selection</td>
-    <td align="center">Y. Soh,</br>H. Ashraf,</br>Y. Hae,</br>I. Kim <a href="#8DLS">[36]</a></td>
-    <td align="center">2014</td>
-    <td align="center">M8DLS</td>
-    <td align="center"><i>labeling_soh_2014_M8DLS.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Line-based Union-Find</td>
-    <td align="center">K. Yonehara,</br>K. Aizawa <a href="#LBUF">[39]</a></td>
-    <td align="center">2015</td>
-    <td align="center">LBUF</td>
-    <td align="center"><i>labeling_yonehara_2015.cu</i></td>
+    <td align="center"><i>labeling_CUDA_OLE.cu</i></td>
     <td align="center">2D</td>
   </tr>
   <tr>
@@ -435,7 +443,7 @@ Notes for gnuplot:
     <td align="center">S. Zavalishin,</br>I. Safonov,</br>Y. Bekhtin,</br>I. Kurilin <a href="#BE">[20]</a></td>
     <td align="center">2016</td>
     <td align="center">BE</td>
-    <td align="center"><i>labeling_zavalishin_2016.cu</i></td>
+    <td align="center"><i>labeling_CUDA_BE.cu</i></td>
     <td align="center">2D and 3D</td>
   </tr>
   <tr>
@@ -443,31 +451,7 @@ Notes for gnuplot:
     <td align="center">L. Cabaret,</br>L. Lacassagne,</br>D. Etiemble <a href="#DLP">[21]</a></td>
     <td align="center">2017</td>
     <td align="center">DLP</td>
-    <td align="center"><i>labeling_cabaret_2017.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Komura Equivalence (8-conn)</td>
-    <td align="center">S. Allegretti,</br>F. Bolelli,</br>M. Cancilla,</br>C. Grana <a href="#KE">[22]</a></td>
-    <td align="center">2018</td>
-    <td align="center">KE</td>
-    <td align="center"><i>labeling_allegretti_2018.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Hardware Accelerated</br>4-connected</td>
-    <td align="center">A. Hennequin,</br>L. Lacassagne,</br>L. Cabaret,</br>Q. Meunier <a href="#HA4">[35]</a></td>
-    <td align="center">2018</td>
-    <td align="center">HA4</td>
-    <td align="center"><i>labeling_hennequin_2018_HA4.cu</i></td>
-    <td align="center">2D</td>
-  </tr>
-  <tr>
-    <td align="center">Hardware Accelerated</br>8-connected</td>
-    <td align="center">A. Hennequin,</br>L. Lacassagne,</br>L. Cabaret,</br>Q. Meunier <a href="#HA4">[35]</a></td>
-    <td align="center">2018</td>
-    <td align="center">HA8</td>
-    <td align="center"><i>labeling_hennequin_2018_HA8.cu</i></td>
+    <td align="center"><i>labeling_CUDA_DLP.cu</i></td>
     <td align="center">2D</td>
   </tr>
   <tr>
@@ -475,7 +459,7 @@ Notes for gnuplot:
     <td align="center">S. Allegretti,</br>F. Bolelli,</br>M. Cancilla,</br>C. Grana <a href="#CAIP">[29]</a></td>
     <td align="center">2019</td>
     <td align="center">C-SAUF</td>
-    <td align="center"><i>labeling_allegretti_2019_SAUF.cu</i>,</br><i>labeling_wu_2009_tree.inc</i></td>
+    <td align="center"><i>labeling_CUDA_SAUF.cu</i>,</br><i>labeling_wu_2009_tree.inc</i></td>
     <td align="center">2D</td>
   </tr>
   <tr>
@@ -483,7 +467,7 @@ Notes for gnuplot:
     <td align="center">S. Allegretti,</br>F. Bolelli,</br>M. Cancilla,</br>C. Grana <a href="#CAIP">[29]</a></td>
     <td align="center">2019</td>
     <td align="center">C-BBDT</td>
-    <td align="center"><i>labeling_allegretti_2019_BBDT.cu</i>, <i>labeling_grana_2010_tree.inc</i></td>
+    <td align="center"><i>labeling_CUDA_BBDT.cu</i>, <i>labeling_grana_2010_tree.inc</i></td>
     <td align="center">2D</td>
   </tr>
     <tr>
@@ -491,7 +475,7 @@ Notes for gnuplot:
     <td align="center">S. Allegretti,</br>F. Bolelli,</br>M. Cancilla,</br>C. Grana <a href="#CAIP">[29]</a></td>
     <td align="center">2019</td>
     <td align="center">C-DRAG</td>
-    <td align="center"><i>labeling_allegretti_2019_DRAG.cu</i></td>
+    <td align="center"><i>labeling_CUDA_DRAG.cu</i></td>
     <td align="center">2D</td>
   </tr>
   <tr>
@@ -499,7 +483,7 @@ Notes for gnuplot:
     <td align="center">S. Allegretti,</br>F. Bolelli,</br>C. Grana <a href="#BUF_BKE">[24]</a></td>
     <td align="center">2019</td>
     <td align="center">BUF</td>
-    <td align="center"><i>labeling_allegretti_2019_BUF.cu</i></td>
+    <td align="center"><i>labeling_CUDA_BUF.cu</i></td>
     <td align="center">2D and 3D</td>
   </tr>
     <tr>
@@ -507,7 +491,7 @@ Notes for gnuplot:
     <td align="center">S. Allegretti,</br>F. Bolelli,</br>C. Grana <a href="#BUF_BKE">[24]</a></td>
     <td align="center">2019</td>
     <td align="center">BKE</td>
-    <td align="center"><i>labeling_allegretti_2019_BKE.cu</i></td>
+    <td align="center"><i>labeling_CUDA_BKE.cu</i></td>
     <td align="center">2D and 3D</td>
   </tr>
 </table>
@@ -565,16 +549,14 @@ perform:
   density:            false
   granularity:        false
   memory:             false
-  blocksize:          false 
 ```
 
 - <i>correctness_tests</i> - dictionary indicating the kind of correctness tests to perform:
 ```yaml
 correctness_tests:
-  eight_connectivity_standard:  true
-  eight_connectivity_steps:     true
-  eight_connectivity_memory:    true
-  eight_connectivity_blocksize: true      
+  eight_connectivity_standard: true
+  eight_connectivity_steps:    true
+  eight_connectivity_memory:   true
 ```
 
 - <i>tests_number</i> - dictionary which sets the number of runs for each test available:
@@ -597,7 +579,7 @@ algorithms:
   - labeling_NULL
 ```
 
-- <i>check_datasets</i>, <i>average_datasets</i>, <i>average_ws_datasets</i>, <i>memory_datasets</i> and <i>blocksize_datasets</i>- lists of <a href="#conf">datasets</a> on which, respectively, correctness, average, average_ws, memory and blocksize tests should be run:
+- <i>check_datasets</i>, <i>average_datasets</i>, <i>average_ws_datasets</i> and <i>memory_datasets</i> - lists of <a href="#conf">datasets</a> on which, respectively, correctness, average, average_ws and memory tests should be run:
 <!--
 - <i>check_datasets:</i> list of datasets on which CCL algorithms should be checked.
 - <i>average_datasets:</i> list of datasets on which average test should be run.
@@ -608,14 +590,6 @@ algorithms:
 ...
 average_datasets: ["3dpes", "fingerprints", "hamlet", "medical", "mirflickr", "tobacco800", "xdocs"]
 ...
-```
-
-- <i>blocksize</i> - only for the 2D GPU and 3D GPU categories, this dictionary configures <a href=#blocksize_test>blocksize test</a> parameters. For each axis, a list of three values specifies [\<first\>, \<last\>, \<step\>]:
-```yaml
-blocksize:
-  x: [2, 64, 2]
-  y: [2, 64, 2]
-  z: [2, 64, 2]
 ```
 
 <p style=text-align: justify;>Finally, the following configuration parameters are common to all categories.</p>
@@ -659,7 +633,7 @@ The header file should follows the structure below (see <tt>include/labeling_bol
 
 template <typename LabelsSolver> // Remove this line if the algorithm is not template 
                                  // on the equivalence solver algorithm
-class <algorithm_name> : public Labeling2D<Connectivity2D::CONN_8> { // the class must extend one of the labeling
+class <algorithm_bame> : public Labeling2D<CONN_8> { // the class must extend one of the labeling
                                                      // classes Labeling2D, Labeling3D, .. that
                                                      // are template on the connectivity type
                                                     
@@ -707,13 +681,13 @@ public:
       // If the algorithm does not have a distinct firs and second scan replace the lines
       // above with the following ones:
       // perf_.start();
-      // AllScans(); // AllScans() should be a member function which implements the entire
+      // AllScans(); // AllScans() shiuld be a member function which implements the entire
                      // algorithm but the allocation/deallocation 
       // perf_.stop();
       // perf_.store(Step(StepType::ALL_SCANS), perf_.last());
 
       perf_.start();
-      Dealloc(); // Dealloc() should be a member function responsible for memory
+      Dealloc(); // Dealloc() shiuld be a member function responsible for memory
                  // deallocation.
       perf_.stop();
       perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
@@ -730,111 +704,7 @@ public:
 }
 ```
 
-When implementing a GPU algorithm only the <tt>.cu</tt> file is required. The file should be placed in the <tt>cuda/src</tt> folder. The general structure of a GPU algorithm is the following:
-```c++
-
-// [...]
-
-// Kernel definitions:
-
-__global__ void <kernel_name_1>(...)
-{
-  ...
-}
-
-__global__ void <kernel_name_2>(...)
-{
-  ...
-}
-                                 
-class <algorithm_name> : public GpuLabeling2D<Connectivity2D::CONN_8> { // the class must extend one of the labeling
-                                                     // classes GpuLabeling2D, GpuLabeling3D, .. that
-                                                     // are template on the connectivity type
-                                                    
-public:
-    <algorithm_name>() {}
-
-    // This member function should implement the labeling procedure reading data from the
-    // input image "d_img_" (OpenCV cuda::GpuMat) and storing labels into the output one "d_img_labels_"
-    // (OpenCV cuda::GpuMat)
-    void PerformLabeling()
-    {
-      // Create the output image
-      d_img_labels_.create(d_img_.size(), CV_32SC1);
-
-      // [...]
-
-      // Call necessary kernels
-      <kernel_name_1> <<<...>>> (...);
-
-      <kernel_name_2> <<<...>>> (...);
-
-      // [...]
-      
-      // Wait for the end of the last kernel
-      cudaDeviceSynchronize();
-    }
-
-    // This member function should implement the with step version of the labeling procedure.
-    // This is required to perform tests with steps.
-    void PerformLabelingWithSteps()
-    {
-
-      double alloc_timing = Alloc(); // Alloc() should be a member function responsible
-                                     // for memory allocation of the required data structures
-
-      perf_.start();
-      FirstScan(); // FirsScan should be a member function that implements the 
-                   // first scan step of the algorithm (if it has one)
-      perf_.stop();
-      perf_.store(Step(StepType::FIRST_SCAN), perf_.last());
-
-      perf_.start();
-      SecondScan(); // SecondScan should be a member function that implements the 
-                    // second scan step of the algorithm (if it has one)
-      perf_.stop();
-      perf_.store(Step(StepType::SECOND_SCAN), perf_.last());
-
-      // If the algorithm does not have a distinct first and second scan replace the lines
-      // above with the following ones:
-      // perf_.start();
-      // AllScans(); // AllScans() should be a member function which implements the entire
-                     // algorithm but the allocation/deallocation 
-      // perf_.stop();
-      // perf_.store(Step(StepType::ALL_SCANS), perf_.last());
-
-      perf_.start();
-      Dealloc(); // Dealloc() should be a member function responsible for memory
-                 // deallocation.
-      perf_.stop();
-      perf_.store(Step(StepType::ALLOC_DEALLOC), perf_.last() + alloc_timing);
-
-      // [...]
-    }
-
-    void PerformLabelingBlocksize(int x, int y, int z)
-    {
-      // Create the output image
-      d_img_labels_.create(d_img_.size(), CV_32SC1);
-
-      // [...]
-
-      // Call necessary kernels through a macro that measures times separately
-      BLOCKSIZE_KERNEL(<kernel_name_1>, <grid_size>, <block_size>, <dynamic_shared_mem>, <arguments>...);
-
-      BLOCKSIZE_KERNEL(<kernel_name_2>, <grid_size>, <block_size>, <dynamic_shared_mem>, <arguments>...);
-
-      // [...]
-    }
-
-}
-
-REGISTER_LABELING(<algorithm_name>);
-
-// Only necessary for blocksize test
-REGISTER_KERNELS(<algorithm_name>, <kernel_name_1>, <kernel_name_2>, ...);
-
-```
+When implementing a GPU algorithm only the <tt>.cu</tt> file is required. The file should be placed in the <tt>cuda/src</tt> folder.
 
 <p align="justify">Once an algorithm has been added to YACCLAB, it is ready to be tested and compared to the others. Don't forget to update the configuration file! We look at YACCLAB as a growing effort towards better reproducibility of CCL algorithms, so implementations of new and existing labeling methods are very welcome.</p>
 
@@ -925,9 +795,6 @@ REGISTER_KERNELS(<algorithm_name>, <kernel_name_1>, <kernel_name_2>, ...);
 
 - <b>Granularity tests:</b> <p align="justify"> evaluates an algorithm varying density (from 1% to 100%, using a 1% step) and pixels granularity, but not images resolution. The output results display the average execution time over images with the same density and granularity.</p>
 
-<a name="blocksize_test"></a>
-- <b>Blocksize tests:</b> <p align="justify"> this test, which only makes sense for CUDA algorithms, is aimed at finding the best block size for each kernel with grid search parameter optimization. The range of values for each block axis can be specified in the configuration file. Given a set of CUDA algorithms, the blocksize test reports execution times of each kernel on one or multiple datasets, repeating the measurement for every different block size. Results are presented in a csv file. For every kernel, dataset and block size, the total execution time in ms is reported.</p>
-
 ## Examples of YACCLAB Output Results
 
 <table>
@@ -958,7 +825,6 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   </tr>
   <tr>
     <td align="center"><a href="https://github.com/patrickhwood"><img src="https://avatars.githubusercontent.com/u/2100827?v=4?s=100" width="100px;" alt=""/><br /><sub><b>patrickhwood</b></sub></a><br /><a href="https://github.com/prittt/YACCLAB/issues?q=author%3Apatrickhwood" title="Bug reports">🐛</a></td>
-    <td align="center"><a href="https://github.com/fengweichangzi"><img src="https://avatars.githubusercontent.com/u/87119815?v=4?s=100" width="100px;" alt=""/><br /><sub><b>WalnutVision</b></sub></a><br /><a href="https://github.com/prittt/YACCLAB/issues?q=author%3Afengweichangzi" title="Bug reports">🐛</a></td>
   </tr>
 </table>
 
@@ -1168,15 +1034,6 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 </tr>
 <tr>
     <td style="vertical-align: top !important;" align="right">
-      <a name="BRB">[25]</a>
-    </td>
-    <td>
-      <p align="justify">
-P. Chen, H. Zhao, C. Tao, H. Sang, "Block-run-based connected component labelling algorithm for gpgpu using shared memory." Electronics Letters, 2011</p>
-    </td>
-</tr>
-<tr>
-    <td style="vertical-align: top !important;" align="right">
       <a name="SPAGHETTI">[26]</a>
     </td>
     <td>
@@ -1241,60 +1098,6 @@ P. Chen, H. Zhao, C. Tao, H. Sang, "Block-run-based connected component labellin
     <td>
       <p align="justify">
 	F. Bolelli, S. Allegretti, C. Grana. "One DAG to Rule Them All." IEEE Transactions on Pattern Analisys and Machine Intelligence, 2021</p>
-    </td>
-</tr>
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="ACCL">[34]</a>
-    </td>
-    <td>
-      <p align="justify">
-F. N. Paravecino, D. Kaeli, "Accelerated Connected Component Labeling Using CUDA Framework." International Conference on Computer Vision and Graphics, ICCVG, 2014</p>
-    </td>
-</tr>	
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="HA4">[35]</a>
-    </td>
-    <td>
-      <p align="justify">
-A. Hennequin, L. Lacassagne, L. Cabaret, Q. Meunier, "A new Direct Connected Component Labeling and Analysis Algorithms for GPUs", DASIP, 2018</p>
-    </td>
-</tr>	
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="8DLS">[36]</a>
-    </td>
-    <td>
-      <p align="justify">
-Y. So, H. Ashraf, Y. Hae, I. Kim, "Fast Parallel Connected Component Labeling Algorithm Using CUDA Based On 8-Directional Label Selection", International Journal of Latest Research in Science and Technology, 2014</p>
-    </td>
-</tr>
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="RASMUSSON">[37]</a>
-    </td>
-    <td>
-      <p align="justify">
-A. Rasmusson, T.S. Sørensen, G. Ziegler, "Connected Components Labeling on the GPU with Generalization to Voronoi Diagrams and Signed Distance Fields", International Symposium on Visual Computing, 2013</p>
-    </td>
-</tr>
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="STAVA">[38]</a>
-    </td>
-    <td>
-      <p align="justify">
-O. Stava, B. Benes, "Connected Components Labeling in CUDA", GPU Computing Gems, 2011</p>
-    </td>
-</tr>	
-<tr>
-    <td style="vertical-align: top !important;" align="right">
-      <a name="LBUF">[39]</a>
-    </td>
-    <td>
-      <p align="justify">
-K. Yonehara, K. Aizawa, "A Line-Based Connected Component Labeling Algorithm Using GPUs", Third International Symposium on Computing and Networking, 2015</p>
     </td>
 </tr>	
 </table>
