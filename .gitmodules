@@ -1,16 +1,6 @@
-[submodule "lsl3dlib"]
-	path = lib/lsl3dlib
-	url = ../lsl3dlib.git
-	branch = master
-[submodule "nrc2"]
-	path = lib/nrc2
-	url = https://github.com/alsoc/nrc2.git
 [submodule "lib/nrc2"]
 	path = lib/nrc2
 	url = https://github.com/alsoc/nrc2.git
-[submodule "lib/lib/nrc2"]
-	path = lib/lib/nrc2
-	url = https://github.com/alsoc/nrc2.git
 [submodule "lib/lib/lsl3dlib"]
-	path = lib/lib/lsl3dlib
+	path = lib/lsl3dlib
 	url = https://github.com/natmaurice/lsl3dlib.git
